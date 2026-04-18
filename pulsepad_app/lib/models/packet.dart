@@ -1,28 +1,52 @@
-class InputPacket {
+enum ConnectionMode { usb, wifi }
+enum ConnectionStatus { disconnected, connecting, connected, error }
+enum ControllerLayout { gamepad, psp, ps5, mouse, keyboard }
+
+class GamepadPacket {
   final int timestamp;
   final Map<String, int> buttons;
   final Map<String, double> axes;
 
-  InputPacket({
-    required this.timestamp,
-    required this.buttons,
-    required this.axes,
-  });
+  GamepadPacket({required this.timestamp, required this.buttons, required this.axes});
 
   Map<String, dynamic> toJson() => {
-    'type': 'INPUT',
+    'type': 'GAMEPAD',
     'timestamp': timestamp,
     'buttons': buttons,
     'axes': axes,
   };
+}
 
-  factory InputPacket.fromJson(Map<String, dynamic> json) {
-    return InputPacket(
-      timestamp: json['timestamp'] as int,
-      buttons: Map<String, int>.from(json['buttons'] ?? {}),
-      axes: Map<String, double>.from(json['axes'] ?? {}),
-    );
-  }
+class MousePacket {
+  final int timestamp;
+  final double dx;
+  final double dy;
+  final Map<String, int> buttons;
+
+  MousePacket({required this.timestamp, required this.dx, required this.dy, required this.buttons});
+
+  Map<String, dynamic> toJson() => {
+    'type': 'MOUSE',
+    'timestamp': timestamp,
+    'dx': dx,
+    'dy': dy,
+    'buttons': buttons,
+  };
+}
+
+class KeyboardPacket {
+  final int timestamp;
+  final String key;
+  final int state;
+
+  KeyboardPacket({required this.timestamp, required this.key, required this.state});
+
+  Map<String, dynamic> toJson() => {
+    'type': 'KEYBOARD',
+    'timestamp': timestamp,
+    'key': key,
+    'state': state,
+  };
 }
 
 class HapticPacket {
@@ -37,7 +61,3 @@ class HapticPacket {
     'intensity': intensity,
   };
 }
-
-enum ConnectionMode { usb, wifi }
-
-enum ConnectionStatus { disconnected, connecting, connected, error }

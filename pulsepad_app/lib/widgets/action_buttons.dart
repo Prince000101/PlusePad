@@ -15,28 +15,32 @@ class ActionButtons extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 180,
-      height: 180,
+      width: 200,
+      height: 200,
       child: Stack(
         alignment: Alignment.center,
         children: [
+          // Y button (top)
           Positioned(
-            top: 0,
+            top: 10,
             child: _buildButton('Y', const Color(0xFF22C55E), 'Y'),
           ),
+          // X button (bottom left)
           Positioned(
-            bottom: 15,
-            left: 0,
+            left: 20,
+            bottom: 40,
             child: _buildButton('X', const Color(0xFF3B82F6), 'X'),
           ),
+          // B button (bottom right)
           Positioned(
-            bottom: 15,
-            right: 0,
+            right: 20,
+            bottom: 40,
             child: _buildButton('B', const Color(0xFFEF4444), 'B'),
           ),
+          // A button (right)
           Positioned(
-            right: 25,
-            top: 30,
+            right: 10,
+            top: 50,
             child: _buildButton('A', const Color(0xFFF59E0B), 'A'),
           ),
         ],
@@ -52,20 +56,30 @@ class ActionButtons extends StatelessWidget {
       onTapCancel: () => onReleased(label),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 50),
-        width: 54,
-        height: 54,
+        width: 56,
+        height: 56,
         decoration: BoxDecoration(
           color: isPressed ? color : color.withOpacity(0.15),
           shape: BoxShape.circle,
           border: Border.all(
-            color: color.withOpacity(isPressed ? 1 : 0.5),
-            width: 2,
+            color: color,
+            width: 2.5,
           ),
           boxShadow: isPressed
               ? [
-                  BoxShadow(color: color.withOpacity(0.6), blurRadius: 20, spreadRadius: 2),
+                  BoxShadow(
+                    color: color.withOpacity(0.6),
+                    blurRadius: 20,
+                    spreadRadius: 3,
+                  ),
                 ]
-              : null,
+              : [
+                  BoxShadow(
+                    color: color.withOpacity(0.3),
+                    blurRadius: 8,
+                    spreadRadius: 1,
+                  ),
+                ],
         ),
         child: Center(
           child: Text(
@@ -73,7 +87,7 @@ class ActionButtons extends StatelessWidget {
             style: TextStyle(
               color: isPressed ? Colors.white : color,
               fontWeight: FontWeight.bold,
-              fontSize: 18,
+              fontSize: 20,
             ),
           ),
         ),
