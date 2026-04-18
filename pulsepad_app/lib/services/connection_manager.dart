@@ -13,6 +13,7 @@ class ConnectionManager extends ChangeNotifier {
   int _lastTimestamp = 0;
   Timer? _heartbeatTimer;
   Timer? _latencyTimer;
+  String _serverIp = '';
 
   ConnectionMode get mode => _mode;
   ConnectionStatus get state => _state;
@@ -42,20 +43,31 @@ class ConnectionManager extends ChangeNotifier {
       _state = ConnectionStatus.connected;
       _startHeartbeat();
     } catch (e) {
+      debugPrint('Connection error: $e');
       _state = ConnectionStatus.error;
+      notifyListeners();
     }
-    notifyListeners();
   }
 
   Future<void> _connectUsb() async {
     _socket = await Socket.connect('127.0.0.1', 5005);
+
+    _socket!.listen((data) {
+      final response = utf8.decode(data);
+      debugPrint('Received: $response');
+    });
   }
 
   Future<void> _connectWifi() async {
     if (_ipAddress.isEmpty) {
       throw Exception('IP address not set');
     }
-    _socket = await Socket.connect(_ipAddress, 5006);
+    Socket.connect(_ipAddress, 5006).then((socket) {
+      _socket = socket;
+      _socket!.listen((data) {
+        debugPrint('Received: ${utf8.decode(data)}');
+      });
+    });
   }
 
   void _startHeartbeat() {
@@ -74,14 +86,26 @@ class ConnectionManager extends ChangeNotifier {
   }
 
   Future<void> sendInput(InputPacket packet) async {
-    if (_socket == null || _state != ConnectionStatus.connected) return;
+    if (_socket == null || _state != ConnectionStatus.connected) {
+      return;
+    }
     _lastTimestamp = packet.timestamp;
-    _socket!.write(jsonEncode(packet.toJson()));
+    try {
+      final data = jsonEncode(packet.toJson()) + '\n';
+      _socket!.write(data);
+    } catch (e) {
+      debugPrint('Send error: $e');
+    }
   }
 
   void _sendPacket(Map<String, dynamic> data) {
     if (_socket == null || _state != ConnectionStatus.connected) return;
-    _socket!.write(jsonEncode(data));
+    try {
+      final packetData = jsonEncode(data) + '\n';
+      _socket!.write(packetData);
+    } catch (e) {
+      debugPrint('Send error: $e');
+    }
   }
 
   void disconnect() {
