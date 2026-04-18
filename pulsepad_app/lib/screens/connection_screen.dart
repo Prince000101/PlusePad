@@ -60,7 +60,7 @@ class ConnectionScreen extends StatelessWidget {
                 height: 56,
                 child: Consumer<ConnectionManager>(
                   builder: (context, manager, _) => ElevatedButton(
-                    onPressed: manager.state == ConnectionState.connecting
+                    onPressed: manager.state == ConnectionStatus.connecting
                         ? null
                         : () => _handleConnect(context, manager),
                     style: ElevatedButton.styleFrom(
@@ -70,7 +70,7 @@ class ConnectionScreen extends StatelessWidget {
                       ),
                     ),
                     child: Text(
-                      manager.state == ConnectionState.connecting
+                      manager.state == ConnectionStatus.connecting
                           ? 'Connecting...'
                           : 'CONNECT',
                       style: const TextStyle(
@@ -86,7 +86,7 @@ class ConnectionScreen extends StatelessWidget {
                 builder: (context, manager, _) => Text(
                   _getStatusText(manager),
                   style: TextStyle(
-                    color: manager.state == ConnectionState.error
+                    color: manager.state == ConnectionStatus.error
                         ? Colors.red
                         : Colors.white54,
                   ),
@@ -176,7 +176,7 @@ class ConnectionScreen extends StatelessWidget {
 
   void _handleConnect(BuildContext context, ConnectionManager manager) async {
     await manager.connect();
-    if (manager.state == ConnectionState.connected && context.mounted) {
+    if (manager.state == ConnectionStatus.connected && context.mounted) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const ControllerScreen()),
@@ -186,13 +186,13 @@ class ConnectionScreen extends StatelessWidget {
 
   String _getStatusText(ConnectionManager manager) {
     switch (manager.state) {
-      case ConnectionState.disconnected:
+      case ConnectionStatus.disconnected:
         return 'Not connected';
-      case ConnectionState.connecting:
+      case ConnectionStatus.connecting:
         return 'Establishing connection...';
-      case ConnectionState.connected:
+      case ConnectionStatus.connected:
         return 'Ready to play';
-      case ConnectionState.error:
+      case ConnectionStatus.error:
         return 'Connection failed';
     }
   }

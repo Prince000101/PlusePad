@@ -6,7 +6,7 @@ import '../models/packet.dart';
 
 class ConnectionManager extends ChangeNotifier {
   ConnectionMode _mode = ConnectionMode.usb;
-  ConnectionState _state = ConnectionState.disconnected;
+  ConnectionStatus _state = ConnectionStatus.disconnected;
   Socket? _socket;
   String _ipAddress = '';
   int _latency = 0;
@@ -15,7 +15,7 @@ class ConnectionManager extends ChangeNotifier {
   Timer? _latencyTimer;
 
   ConnectionMode get mode => _mode;
-  ConnectionState get state => _state;
+  ConnectionStatus get state => _state;
   String get ipAddress => _ipAddress;
   int get latency => _latency;
 
@@ -30,7 +30,7 @@ class ConnectionManager extends ChangeNotifier {
   }
 
   Future<void> connect() async {
-    _state = ConnectionState.connecting;
+    _state = ConnectionStatus.connecting;
     notifyListeners();
 
     try {
@@ -39,10 +39,10 @@ class ConnectionManager extends ChangeNotifier {
       } else {
         await _connectWifi();
       }
-      _state = ConnectionState.connected;
+      _state = ConnectionStatus.connected;
       _startHeartbeat();
     } catch (e) {
-      _state = ConnectionState.error;
+      _state = ConnectionStatus.error;
     }
     notifyListeners();
   }
@@ -74,13 +74,13 @@ class ConnectionManager extends ChangeNotifier {
   }
 
   Future<void> sendInput(InputPacket packet) async {
-    if (_socket == null || _state != ConnectionState.connected) return;
+    if (_socket == null || _state != ConnectionStatus.connected) return;
     _lastTimestamp = packet.timestamp;
     _socket!.write(jsonEncode(packet.toJson()));
   }
 
   void _sendPacket(Map<String, dynamic> data) {
-    if (_socket == null || _state != ConnectionState.connected) return;
+    if (_socket == null || _state != ConnectionStatus.connected) return;
     _socket!.write(jsonEncode(data));
   }
 
@@ -89,7 +89,7 @@ class ConnectionManager extends ChangeNotifier {
     _latencyTimer?.cancel();
     _socket?.destroy();
     _socket = null;
-    _state = ConnectionState.disconnected;
+    _state = ConnectionStatus.disconnected;
     _latency = 0;
     notifyListeners();
   }
