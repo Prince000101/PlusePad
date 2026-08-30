@@ -1,10 +1,10 @@
 name: pulsepad
-description: "Turn your phone into a low-latency game controller for Linux PC"
+description: "Turn your phone into a low-latency game controller for PS2/PSP emulators and Linux PC"
 publish_to: 'none'
-version: 1.0.0+1
+version: 2.0.0+2
 
 environment:
-  sdk: '>=2.18.0 <4.0.0'
+  sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -12,7 +12,6 @@ dependencies:
   provider: ^6.1.1
   shared_preferences: ^2.2.2
   vibration: ^2.0.0
-  permission_handler: ^11.3.0
 
 dev_dependencies:
   flutter_test:

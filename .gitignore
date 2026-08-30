@@ -1,1 +1,27 @@
-app-debug.apk
+# PulsePad
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Flutter / Dart
+pulsepad_app/build/
+pulsepad_app/.dart_tool/
+pulsepad_app/.flutter-plugins
+pulsepad_app/.flutter-plugins-dependencies
+pulsepad_app/.packages
+pulsepad_app/.pub-cache/
+pulsepad_app/.pub/
+*.iml
+*.apk
+*.aab
+ios/Pods/
+.android/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp

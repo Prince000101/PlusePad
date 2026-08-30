@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:math' as math;
 
 class AnalogStick extends StatefulWidget {
   final Function(double x, double y) onChanged;
@@ -17,9 +16,8 @@ class AnalogStick extends StatefulWidget {
 
 class _AnalogStickState extends State<AnalogStick> {
   Offset _position = Offset.zero;
-  double _baseRadius = 30;
-  double _stickRadius = 28;
-  double _deadZone = 0.12;
+  final double _stickRadius = 28;
+  final double _deadZone = 0.12;
 
   void _handlePanUpdate(DragUpdateDetails details, BoxConstraints constraints) {
     final center = Offset(widget.size / 2, widget.size / 2);
@@ -71,7 +69,6 @@ class _AnalogStickState extends State<AnalogStick> {
       height: widget.size,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final maxRadius = widget.size / 2 - _stickRadius - 10;
           return GestureDetector(
             onPanUpdate: (d) => _handlePanUpdate(d, constraints),
             onPanEnd: _handlePanEnd,
@@ -101,12 +98,12 @@ class _AnalogStickState extends State<AnalogStick> {
                   height: _stickRadius * 2,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: RadialGradient(
+                    gradient: const RadialGradient(
                       colors: [
-                        const Color(0xFF818CF8),
-                        const Color(0xFF6366F1),
+                        Color(0xFF818CF8),
+                        Color(0xFF6366F1),
                       ],
-                      center: const Alignment(-0.3, -0.3),
+                      center: Alignment(-0.3, -0.3),
                     ),
                     border: Border.all(
                       color: const Color(0xFF818CF8),

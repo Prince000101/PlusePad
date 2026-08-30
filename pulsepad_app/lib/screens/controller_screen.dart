@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import '../services/connection_manager.dart';
+import 'package:vibration/vibration.dart';
+
 import '../models/packet.dart';
+import '../services/connection_manager.dart';
 import '../widgets/analog_stick.dart';
 import '../widgets/action_buttons.dart';
 import '../widgets/shoulder_buttons.dart';
+import '../widgets/dpad.dart';
+import 'settings_screen.dart';
 
 class ControllerScreen extends StatefulWidget {
   const ControllerScreen({super.key});
@@ -14,22 +18,28 @@ class ControllerScreen extends StatefulWidget {
   State<ControllerScreen> createState() => _ControllerScreenState();
 }
 
-class _ControllerScreenState extends State<ControllerScreen> with TickerProviderStateMixin {
-  final Map<String, int> _buttons = {
-    'A': 0, 'B': 0, 'X': 0, 'Y': 0,
-    'L1': 0, 'R1': 0, 'L2': 0, 'R2': 0,
-    'START': 0, 'SELECT': 0,
-  };
-  final Map<String, double> _axes = {'LX': 0, 'LY': 0, 'RX': 0, 'RY': 0};
+class _ControllerScreenState extends State<ControllerScreen>
+    with TickerProviderStateMixin {
   ControllerLayout _currentLayout = ControllerLayout.gamepad;
   bool _isLandscape = false;
-  bool _mouseControl = false;
   bool _dpadMode = false;
 
   @override
   void initState() {
     super.initState();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<ConnectionManager>().enableAutoReconnect();
+    });
+    _bindHaptic();
+  }
+
+  void _bindHaptic() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<ConnectionManager>().onHaptic = (dur, intensity, motor) {
+        Vibration.vibrate(duration: dur);
+      };
+    });
   }
 
   @override
@@ -38,47 +48,19 @@ class _ControllerScreenState extends State<ControllerScreen> with TickerProvider
     super.dispose();
   }
 
-  void _sendGamepadInput() {
-    final packet = GamepadPacket(
-      timestamp: DateTime.now().millisecondsSinceEpoch,
-      buttons: Map.from(_buttons),
-      axes: Map.from(_axes),
-    );
-    context.read<ConnectionManager>().sendGamepad(packet);
+  ConnectionManager _cm() => context.read<ConnectionManager>();
+
+  // ------------------------------- inputs ------------------------------ //
+  void _setButton(String name, bool pressed) {
+    final cm = _cm();
+    if (cm.controller.setButton(name, pressed)) cm.pushState();
   }
 
-  void _sendMouseInput(double dx, double dy, Map<String, int> buttons) {
-    final packet = MousePacket(
-      timestamp: DateTime.now().millisecondsSinceEpoch,
-      dx: dx,
-      dy: dy,
-      buttons: buttons,
-    );
-    context.read<ConnectionManager>().sendMouse(packet);
-  }
-
-  void _sendKeyboardInput(String key, int state) {
-    final packet = KeyboardPacket(
-      timestamp: DateTime.now().millisecondsSinceEpoch,
-      key: key,
-      state: state,
-    );
-    context.read<ConnectionManager>().sendKeyboard(packet);
-  }
-
-  void _onButtonPressed(String button) {
-    setState(() => _buttons[button] = 1);
-    _sendGamepadInput();
-  }
-
-  void _onButtonReleased(String button) {
-    setState(() => _buttons[button] = 0);
-    _sendGamepadInput();
-  }
-
-  void _onAxisChanged(String axis, double value) {
-    setState(() => _axes[axis] = value);
-    _sendGamepadInput();
+  void _setAxis(String name, double v) {
+    final cm = _cm();
+    // Apply sensitivity to the analog value before scaling.
+    v = (v * cm.sensitivity).clamp(-1.0, 1.0);
+    if (cm.controller.setAxis(name, v)) cm.pushState();
   }
 
   void _toggleLandscape() {
@@ -93,9 +75,9 @@ class _ControllerScreenState extends State<ControllerScreen> with TickerProvider
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       body: SafeArea(
-        child: _isLandscape 
-          ? _buildLandscapeLayout() 
-          : _buildPortraitLayout(),
+        child: _isLandscape
+            ? _buildLandscapeLayout()
+            : _buildPortraitLayout(),
       ),
     );
   }
@@ -104,9 +86,7 @@ class _ControllerScreenState extends State<ControllerScreen> with TickerProvider
     return Column(
       children: [
         _buildHeader(),
-        Expanded(
-          child: _buildCurrentLayout(),
-        ),
+        Expanded(child: _buildCurrentLayout()),
         _buildBottomBar(),
       ],
     );
@@ -132,29 +112,28 @@ class _ControllerScreenState extends State<ControllerScreen> with TickerProvider
     return Row(
       children: [
         Container(
-          width: 200,
+          width: 210,
           padding: const EdgeInsets.all(12),
           child: Column(
             children: [
-              AnalogStick(
-                size: 120,
-                onChanged: (x, y) {
-                  _onAxisChanged('LX', x);
-                  _onAxisChanged('LY', y);
-                },
-              ),
+              _dpadMode ? DPad(onChanged: _dpad, size: 120)
+                        : AnalogStick(
+                            size: 130,
+                            onChanged: (x, y) {
+                              _setAxis('LX', x);
+                              _setAxis('LY', y);
+                            }),
               const Spacer(),
               ShoulderButtons(
-                buttons: _buttons,
-                onPressed: _onButtonPressed,
-                onReleased: _onButtonReleased,
+                onPressed: (b) => _setButton(b, true),
+                onReleased: (b) => _setButton(b, false),
                 horizontal: true,
               ),
             ],
           ),
         ),
         Expanded(
-          child: Container(
+          child: Padding(
             padding: const EdgeInsets.all(12),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -163,15 +142,15 @@ class _ControllerScreenState extends State<ControllerScreen> with TickerProvider
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     ActionButtons(
-                      buttons: _buttons,
-                      onPressed: _onButtonPressed,
-                      onReleased: _onButtonReleased,
+                      onPressed: (b) => _setButton(b, true),
+                      onReleased: (b) => _setButton(b, false),
                     ),
+                    _buildVerticalCenterButtons(),
                     AnalogStick(
-                      size: 100,
+                      size: 110,
                       onChanged: (x, y) {
-                        _onAxisChanged('RX', x);
-                        _onAxisChanged('RY', y);
+                        _setAxis('RX', x);
+                        _setAxis('RY', y);
                       },
                     ),
                   ],
@@ -184,12 +163,14 @@ class _ControllerScreenState extends State<ControllerScreen> with TickerProvider
     );
   }
 
+  void _dpad(String dir, bool pressed) => _setButton(dir, pressed);
+
   Widget _buildHeader() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
-        borderRadius: const BorderRadius.only(
+      decoration: const BoxDecoration(
+        color: Color(0xFF1E293B),
+        borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(20),
           bottomRight: Radius.circular(20),
         ),
@@ -212,20 +193,15 @@ class _ControllerScreenState extends State<ControllerScreen> with TickerProvider
             child: Consumer<ConnectionManager>(
               builder: (context, manager, _) => Row(
                 children: [
-                  Icon(
-                    manager.mode == ConnectionMode.usb ? Icons.usb : Icons.wifi,
-                    size: 14,
-                    color: const Color(0xFF22C55E),
-                  ),
+                  Icon(manager.mode == ConnectionMode.usb
+                      ? Icons.usb
+                      : Icons.wifi,
+                      size: 14, color: const Color(0xFF22C55E)),
                   const SizedBox(width: 6),
-                  Text(
-                    manager.mode == ConnectionMode.usb ? 'USB' : 'Wi-Fi',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF22C55E),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  Text(manager.mode == ConnectionMode.usb ? 'USB' : 'Wi-Fi',
+                      style: const TextStyle(
+                          fontSize: 12, color: Color(0xFF22C55E),
+                          fontWeight: FontWeight.w600)),
                 ],
               ),
             ),
@@ -238,14 +214,10 @@ class _ControllerScreenState extends State<ControllerScreen> with TickerProvider
                 color: _getLatencyColor(manager.latency).withOpacity(0.2),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Text(
-                '${manager.latency}ms',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: _getLatencyColor(manager.latency),
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              child: Text('${manager.latency}ms',
+                  style: TextStyle(
+                      fontSize: 12, color: _getLatencyColor(manager.latency),
+                      fontWeight: FontWeight.bold)),
             ),
           ),
         ],
@@ -258,140 +230,163 @@ class _ControllerScreenState extends State<ControllerScreen> with TickerProvider
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
-          AnalogStick(
-            size: 180,
-            onChanged: (x, y) {
-              _onAxisChanged('LX', x);
-              _onAxisChanged('LY', y);
-            },
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _dpadMode
+                  ? DPad(onChanged: _dpad)
+                  : AnalogStick(
+                      size: 160,
+                      onChanged: (x, y) {
+                        _setAxis('LX', x);
+                        _setAxis('LY', y);
+                      }),
+              AnalogStick(
+                size: 120,
+                onChanged: (x, y) {
+                  _setAxis('RX', x);
+                  _setAxis('RY', y);
+                },
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           Expanded(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                _buildVerticalCenterButtons(),
                 ActionButtons(
-                  buttons: _buttons,
-                  onPressed: _onButtonPressed,
-                  onReleased: _onButtonReleased,
-                ),
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _buildCenterButton('SELECT', 'SELECT'),
-                    const SizedBox(height: 8),
-                    _buildCenterButton('START', 'START'),
-                  ],
+                  onPressed: (b) => _setButton(b, true),
+                  onReleased: (b) => _setButton(b, false),
                 ),
               ],
             ),
           ),
           ShoulderButtons(
-            buttons: _buttons,
-            onPressed: _onButtonPressed,
-            onReleased: _onButtonReleased,
+            onPressed: (b) => _setButton(b, true),
+            onReleased: (b) => _setButton(b, false),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildVerticalCenterButtons() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _buildCenterButton('SELECT'),
+        const SizedBox(height: 8),
+        _buildCenterButton('START'),
+        const SizedBox(height: 8),
+        _buildCenterButton('L3'),
+        const SizedBox(height: 8),
+        _buildCenterButton('R3'),
+      ],
     );
   }
 
   Widget _buildPSPLayout() {
     return Padding(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       child: Column(
         children: [
           Expanded(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // PSP D-Pad (simulated with a small stick or custom buttons)
-                AnalogStick(
-                  size: 120,
-                  onChanged: (x, y) {
-                    _onAxisChanged('LX', x);
-                    _onAxisChanged('LY', y);
-                  },
-                ),
+                DPad(onChanged: _dpad, size: 130),
                 ActionButtons(
-                  buttons: _buttons,
-                  onPressed: _onButtonPressed,
-                  onReleased: _onButtonReleased,
+                  onPressed: (b) => _setButton(b, true),
+                  onReleased: (b) => _setButton(b, false),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
+          _buildVerticalCenterButtonsRow(),
+          const SizedBox(height: 16),
           AnalogStick(
-            size: 140,
+            size: 130,
             onChanged: (x, y) {
-              _onAxisChanged('RX', x);
-              _onAxisChanged('RY', y);
+              _setAxis('RX', x);
+              _setAxis('RY', y);
             },
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
           ShoulderButtons(
-            buttons: _buttons,
-            onPressed: _onButtonPressed,
-            onReleased: _onButtonReleased,
+            onPressed: (b) => _setButton(b, true),
+            onReleased: (b) => _setButton(b, false),
           ),
         ],
       ),
     );
   }
 
+  Widget _buildVerticalCenterButtonsRow() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        _buildCenterButton('SELECT'),
+        _buildCenterButton('START'),
+        _buildCenterButton('L3'),
+        _buildCenterButton('R3'),
+      ],
+    );
+  }
+
   Widget _buildPS5Layout() {
     return Padding(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       child: Column(
         children: [
           Expanded(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // PS5 D-pad
-                AnalogStick(
-                  size: 100,
-                  onChanged: (x, y) {
-                    _onAxisChanged('LX', x);
-                    _onAxisChanged('LY', y);
-                  },
-                ),
-                // PS5 Face buttons
+                _dpadMode
+                    ? DPad(onChanged: _dpad, size: 120)
+                    : AnalogStick(
+                        size: 110,
+                        onChanged: (x, y) {
+                          _setAxis('LX', x);
+                          _setAxis('LY', y);
+                        }),
                 ActionButtons(
-                  buttons: _buttons,
-                  onPressed: _onButtonPressed,
-                  onReleased: _onButtonReleased,
+                  onPressed: (b) => _setButton(b, true),
+                  onReleased: (b) => _setButton(b, false),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
+          _buildVerticalCenterButtonsRow(),
+          const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               AnalogStick(
-                size: 120,
+                size: 110,
                 onChanged: (x, y) {
-                  _onAxisChanged('LX', x);
-                  _onAxisChanged('LY', y);
+                  _setAxis('LX', x);
+                  _setAxis('LY', y);
                 },
               ),
               AnalogStick(
-                size: 120,
+                size: 110,
                 onChanged: (x, y) {
-                  _onAxisChanged('RX', x);
-                  _onAxisChanged('RY', y);
+                  _setAxis('RX', x);
+                  _setAxis('RY', y);
                 },
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
           ShoulderButtons(
-            buttons: _buttons,
-            onPressed: _onButtonPressed,
-            onReleased: _onButtonReleased,
+            onPressed: (b) => _setButton(b, true),
+            onReleased: (b) => _setButton(b, false),
           ),
         ],
       ),
@@ -400,17 +395,14 @@ class _ControllerScreenState extends State<ControllerScreen> with TickerProvider
 
   Widget _buildMouseLayout() {
     return Padding(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       child: Column(
         children: [
           Expanded(
             child: GestureDetector(
               onPanUpdate: (details) {
-                _sendMouseInput(details.delta.dx / 100, details.delta.dy / 100, {
-                  'LEFT': 0,
-                  'RIGHT': 0,
-                  'MIDDLE': 0,
-                });
+                // Mouse is not yet in the binary protocol scope; keep touch
+                // pad for future expansion but no-op for now.
               },
               child: Container(
                 decoration: BoxDecoration(
@@ -419,10 +411,8 @@ class _ControllerScreenState extends State<ControllerScreen> with TickerProvider
                   border: Border.all(color: const Color(0xFF334155)),
                 ),
                 child: const Center(
-                  child: Text(
-                    'Touchpad Area',
-                    style: TextStyle(color: Colors.white54),
-                  ),
+                  child: Text('Touchpad Area',
+                      style: TextStyle(color: Colors.white54)),
                 ),
               ),
             ),
@@ -431,31 +421,11 @@ class _ControllerScreenState extends State<ControllerScreen> with TickerProvider
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _buildMouseButton('LEFT'),
-              _buildMouseButton('MIDDLE'),
-              _buildMouseButton('RIGHT'),
+              _buildCenterButton('SELECT'),
+              _buildCenterButton('START'),
             ],
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildMouseButton(String label) {
-    return GestureDetector(
-      onTapDown: (_) => _sendMouseInput(0, 0, {label: 1}),
-      onTapUp: (_) => _sendMouseInput(0, 0, {label: 0}),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1E293B),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF334155)),
-        ),
-        child: Text(
-          label,
-          style: const TextStyle(color: Colors.white),
-        ),
       ),
     );
   }
@@ -468,60 +438,48 @@ class _ControllerScreenState extends State<ControllerScreen> with TickerProvider
         spacing: 10,
         runSpacing: 10,
         alignment: WrapAlignment.center,
-        children: keys.map((key) => _buildKeyboardKey(key)).toList(),
+        children: keys.map(_buildKeyboardKey).toList(),
       ),
     );
   }
 
   Widget _buildKeyboardKey(String key) {
     return GestureDetector(
-      onTapDown: (_) => _sendKeyboardInput(key, 1),
-      onTapUp: (_) => _sendKeyboardInput(key, 0),
+      onTapDown: (_) => _setButton(key, true),
+      onTapUp: (_) => _setButton(key, false),
       child: Container(
-        width: 70,
-        height: 70,
+        width: 70, height: 70,
         decoration: BoxDecoration(
           color: const Color(0xFF1E293B),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: const Color(0xFF334155)),
         ),
         child: Center(
-          child: Text(
-            key,
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-          ),
+          child: Text(key,
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.bold)),
         ),
       ),
     );
   }
 
-  Widget _buildCenterButton(String label, String display) {
-    final isPressed = _buttons[label] == 1;
+  Widget _buildCenterButton(String label) {
     return GestureDetector(
-      onTapDown: (_) => _onButtonPressed(label),
-      onTapUp: (_) => _onButtonReleased(label),
-      onTapCancel: () => _onButtonReleased(label),
+      onTapDown: (_) => _setButton(label, true),
+      onTapUp: (_) => _setButton(label, false),
+      onTapCancel: () => _setButton(label, false),
       child: Container(
-        width: 50,
-        height: 30,
+        width: 60, height: 32,
         decoration: BoxDecoration(
-          color: isPressed ? const Color(0xFF6366F1) : const Color(0xFF1E293B),
+          color: const Color(0xFF1E293B),
           borderRadius: BorderRadius.circular(15),
-          border: Border.all(
-            color: const Color(0xFF334155),
-            width: 1,
-          ),
+          border: Border.all(color: const Color(0xFF334155), width: 1),
         ),
-        child: Center(
-          child: Text(
-            display,
-            style: TextStyle(
-              fontSize: 10,
-              color: isPressed ? Colors.white : Colors.white54,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
+        alignment: Alignment.center,
+        child: Text(label,
+            style: const TextStyle(
+                fontSize: 9, color: Colors.white54,
+                fontWeight: FontWeight.w600)),
       ),
     );
   }
@@ -535,16 +493,27 @@ class _ControllerScreenState extends State<ControllerScreen> with TickerProvider
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             _buildControlChip(
-              icon: Icons.screen_rotation,
-              label: 'Landscape',
-              isActive: _isLandscape,
-              onTap: _toggleLandscape,
-            ),
-            _buildLayoutChip(ControllerLayout.gamepad, 'Gamepad', Icons.gamepad),
+                icon: Icons.screen_rotation, label: 'Landscape',
+                isActive: _isLandscape, onTap: _toggleLandscape),
+            _buildControlChip(
+                icon: Icons.gamepad, label: 'Gamepad',
+                isActive: _currentLayout == ControllerLayout.gamepad,
+                onTap: () => setState(() => _currentLayout = ControllerLayout.gamepad)),
             _buildLayoutChip(ControllerLayout.psp, 'PSP', Icons.videogame_asset),
             _buildLayoutChip(ControllerLayout.ps5, 'PS5', Icons.sports_esports),
-            _buildLayoutChip(ControllerLayout.mouse, 'Mouse', Icons.mouse),
-            _buildLayoutChip(ControllerLayout.keyboard, 'Keyboard', Icons.keyboard),
+            _buildControlChip(
+                icon: Icons.grid_on,
+                label: _dpadMode ? 'Stick' : 'D-Pad',
+                isActive: _dpadMode,
+                onTap: () => setState(() => _dpadMode = !_dpadMode)),
+            Builder(builder: (context) {
+              return _buildControlChip(
+                  icon: Icons.settings, label: 'Settings', isActive: false,
+                  onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                      ));
+            }),
           ],
         ),
       ),
@@ -552,15 +521,11 @@ class _ControllerScreenState extends State<ControllerScreen> with TickerProvider
   }
 
   Widget _buildLayoutChip(ControllerLayout layout, String label, IconData icon) {
-    final isActive = _currentLayout == layout;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: _buildControlChip(
-        icon: icon,
-        label: label,
-        isActive: isActive,
-        onTap: () => setState(() => _currentLayout = layout),
-      ),
+    return _buildControlChip(
+      icon: icon,
+      label: label,
+      isActive: _currentLayout == layout,
+      onTap: () => setState(() => _currentLayout = layout),
     );
   }
 
@@ -576,39 +541,34 @@ class _ControllerScreenState extends State<ControllerScreen> with TickerProvider
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: isActive ? const Color(0xFF6366F1).withOpacity(0.2) : const Color(0xFF1E293B),
+          color: isActive
+              ? const Color(0xFF6366F1).withOpacity(0.2)
+              : const Color(0xFF1E293B),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isActive ? const Color(0xFF6366F1) : Colors.transparent,
-            width: 1.5,
-          ),
+              color: isActive ? const Color(0xFF6366F1) : Colors.transparent,
+              width: 1.5),
           boxShadow: isActive
               ? [
                   BoxShadow(
-                    color: const Color(0xFF6366F1).withOpacity(0.3),
-                    blurRadius: 10,
-                    spreadRadius: 1,
-                  ),
+                      color: const Color(0xFF6366F1).withOpacity(0.3),
+                      blurRadius: 10, spreadRadius: 1),
                 ]
               : null,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 22,
-              color: isActive ? const Color(0xFF6366F1) : Colors.white54,
-            ),
+            Icon(icon, size: 22,
+                color: isActive ? const Color(0xFF6366F1) : Colors.white54),
             const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10,
-                color: isActive ? const Color(0xFF6366F1) : Colors.white54,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 10,
+                    color: isActive
+                        ? const Color(0xFF6366F1)
+                        : Colors.white54,
+                    fontWeight: FontWeight.w500)),
           ],
         ),
       ),

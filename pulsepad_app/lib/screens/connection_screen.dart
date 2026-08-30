@@ -14,6 +14,7 @@ class ConnectionScreen extends StatefulWidget {
 
 class _ConnectionScreenState extends State<ConnectionScreen> with SingleTickerProviderStateMixin {
   final _ipController = TextEditingController();
+  bool _scanning = false;
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
@@ -60,7 +61,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> with SingleTickerPr
                       _buildConnectButton(),
                       const SizedBox(height: 16),
                       _buildStatus(),
-                      const Spacer(),
+                      const SizedBox(height: 32),
                       _buildFooter(),
                     ],
                   ),
@@ -253,24 +254,118 @@ class _ConnectionScreenState extends State<ConnectionScreen> with SingleTickerPr
   }
 
   Widget _buildIpInput() {
-    return TextField(
-      controller: _ipController,
-      decoration: InputDecoration(
-        hintText: '192.168.1.100',
-        hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-        filled: true,
-        fillColor: const Color(0xFF1E293B),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide.none,
-        ),
-        prefixIcon: const Icon(Icons.router, color: Colors.white54),
-        suffixIcon: const Icon(Icons.edit, color: Colors.white30, size: 18),
-      ),
-      keyboardType: TextInputType.number,
-      style: const TextStyle(color: Colors.white),
-      onChanged: (value) => context.read<ConnectionManager>().setIpAddress(value),
+    return Consumer<ConnectionManager>(
+      builder: (context, manager, _) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _ipController,
+                    decoration: InputDecoration(
+                      hintText: '192.168.1.100',
+                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                      filled: true,
+                      fillColor: const Color(0xFF1E293B),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none,
+                      ),
+                      prefixIcon: const Icon(Icons.router, color: Colors.white54),
+                    ),
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(color: Colors.white),
+                    onChanged: (value) =>
+                        context.read<ConnectionManager>().setIpAddress(value),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: IconButton(
+                    tooltip: 'Find PC automatically',
+                    onPressed: _scanning ? null : () => _scanForPc(context),
+                    icon: _scanning
+                        ? const SizedBox(
+                            width: 20, height: 20,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, valueColor: AlwaysStoppedAnimation(Colors.white)))
+                        : const Icon(Icons.radar, color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            if (manager.discovered.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E293B),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('FOUND',
+                        style: TextStyle(
+                            fontSize: 11, letterSpacing: 1,
+                            color: Colors.white.withOpacity(0.4))),
+                    const SizedBox(height: 6),
+                    ...manager.discovered.map((s) => InkWell(
+                          onTap: () {
+                            _ipController.text = s.host;
+                            context.read<ConnectionManager>().setIpAddress(s.host);
+                            setState(() {});
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.desktop_mac,
+                                    color: Color(0xFF22C55E), size: 18),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    '${s.name}  •  ${s.host}',
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600),
+                                  ),
+                                ),
+                                const Icon(Icons.touch_app,
+                                    size: 16, color: Colors.white30),
+                              ],
+                            ),
+                          ),
+                        )),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        );
+      },
     );
+  }
+
+  Future<void> _scanForPc(BuildContext context) async {
+    setState(() => _scanning = true);
+    try {
+      await context.read<ConnectionManager>().discover();
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Scan failed: $e')));
+      }
+    }
+    if (mounted) setState(() => _scanning = false);
   }
 
   Widget _buildConnectButton() {

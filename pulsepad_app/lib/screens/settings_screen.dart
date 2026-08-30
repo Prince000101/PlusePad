@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../models/packet.dart';
 import '../services/connection_manager.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -16,36 +22,46 @@ class SettingsScreen extends StatelessWidget {
         builder: (context, manager, _) => ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            _buildSection(
-              'Connection',
-              [
-                _buildInfoTile('Mode', manager.mode.name.toUpperCase()),
-                _buildInfoTile('IP Address', manager.ipAddress.isEmpty ? 'Not set' : manager.ipAddress),
-              ],
-            ),
+            _section('Connection', [
+              _infoTile('Mode', manager.mode.name.toUpperCase()),
+              _infoTile('IP Address',
+                  manager.ipAddress.isEmpty ? 'Auto / Not set' : manager.ipAddress),
+              _infoTile('Latency',
+                  manager.state == ConnectionStatus.disconnected
+                      ? '--'
+                      : '${manager.latency} ms'),
+            ]),
             const SizedBox(height: 24),
-            _buildSection(
-              'Controller',
-              [
-                _buildSliderTile('Dead Zone', 0.1, 0.0, 0.5, (v) {}),
-                _buildSwitchTile('Vibration', true, (v) {}),
-                _buildSliderTile('Sensitivity', 1.0, 0.5, 2.0, (v) {}),
-              ],
-            ),
+            _section('Controller', [
+              _sliderTile('Dead Zone',
+                  manager.deadZone, 0.0, 0.5, (v) {
+                setState(() => manager.deadZone = v.abs());
+              }),
+              _sliderTile('Sensitivity',
+                  manager.sensitivity, 0.5, 2.0, (v) {
+                setState(() => manager.sensitivity = v);
+              }),
+            ]),
             const SizedBox(height: 24),
-            _buildSection(
-              'Advanced',
-              [
-                _buildDropdownTile('Packet Rate', '120 Hz', ['60 Hz', '120 Hz', '240 Hz'], (v) {}),
-              ],
-            ),
+            _section('Connection Guide', [
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  'USB:  run  adb reverse tcp:5005 tcp:5005  on the PC once.\n\n'
+                  'Wi-Fi: press the radar button to auto-find your PC, or type '
+                  'its IP address. Both must be on the same network.\n\n'
+                  'On the PC, start the daemon with sudo.',
+                  style: TextStyle(color: Colors.white54, fontSize: 13, height: 1.5),
+                ),
+              ),
+            ]),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildSection(String title, List<Widget> children) {
+  Widget _section(String title, List<Widget> children) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -69,14 +85,15 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildInfoTile(String label, String value) {
+  Widget _infoTile(String label, String value) {
     return ListTile(
       title: Text(label),
       trailing: Text(value, style: const TextStyle(color: Colors.white54)),
     );
   }
 
-  Widget _buildSliderTile(String label, double value, double min, double max, Function(double) onChanged) {
+  Widget _sliderTile(
+      String label, double value, double min, double max, ValueChanged<double> onChanged) {
     return ListTile(
       title: Text(label),
       subtitle: Slider(
@@ -85,30 +102,6 @@ class SettingsScreen extends StatelessWidget {
         max: max,
         onChanged: onChanged,
         activeColor: const Color(0xFF6366F1),
-      ),
-    );
-  }
-
-  Widget _buildSwitchTile(String label, bool value, Function(bool) onChanged) {
-    return ListTile(
-      title: Text(label),
-      trailing: Switch(
-        value: value,
-        onChanged: onChanged,
-        activeColor: const Color(0xFF6366F1),
-      ),
-    );
-  }
-
-  Widget _buildDropdownTile(String label, String value, List<String> options, Function(String) onChanged) {
-    return ListTile(
-      title: Text(label),
-      trailing: DropdownButton<String>(
-        value: value,
-        dropdownColor: const Color(0xFF1E293B),
-        underline: const SizedBox(),
-        items: options.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
-        onChanged: (v) => onChanged(v!),
       ),
     );
   }

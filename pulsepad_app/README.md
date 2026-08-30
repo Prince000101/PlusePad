@@ -1,16 +1,29 @@
-# pulsepad
+# PulsePad (Android App)
 
-A new Flutter project.
+The Flutter controller app that runs on your Android phone and streams inputs
+over a WiFi/LAN or USB (adb-reverse) connection to the PulsePad daemon running
+on a PC.
 
-## Getting Started
+See the [root README](../README.md) for the full project, install instructions
+and the binary protocol spec.
 
-This project is a starting point for a Flutter application.
+## Layout
 
-A few resources to get you started if this is your first Flutter project:
+```
+lib/
+  services/protocol.dart         byte-compatible mirror of the daemon protocol
+  services/connection_manager.dart  UDP/TCP transport, discovery, reconnect, latency
+  models/controller_state.dart   full gamepad state + encode
+  screens/controller_screen.dart gamepad/PSP/PS5/mouse/keyboard layouts
+  screens/connection_screen.dart start + auto-discover + connect
+  widgets/                       dpad, analog stick, action/shoulder buttons
+```
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## Run
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```bash
+flutter pub get
+flutter run             # on a connected device
+# or
+flutter build apk --release
+```

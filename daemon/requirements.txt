@@ -1,2 +1,14 @@
-python-uinput
-python-evdev
+# PulsePad daemon dependencies.
+#
+# Because PulsePad is cross-platform you usually only need the line that
+# matches your host OS:
+
+# Linux (uinput virtual gamepad; needs /dev/uinput write access)
+python-uinput>=0.11.2
+python-evdev>=1.6.0
+
+# Windows (ViGEmBus virtual Xbox 360 pad; install ViGEmBus first:
+#   https://github.com/ViGEm/ViGEmBus   then:  pip install vigem-client)
+# vigem-client
+
+# macOS (userspace driver only; no virtual gamepad yet, daemon still runs).
