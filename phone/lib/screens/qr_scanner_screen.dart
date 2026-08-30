@@ -15,16 +15,24 @@ class QrScannerScreen extends StatefulWidget {
 }
 
 class _QrScannerScreenState extends State<QrScannerScreen> {
-  bool get _isLandscape =>
-      MediaQuery.of(context).orientation == Orientation.landscape;
+  final MobileScannerController _controller = MobileScannerController(
+    autoStart: true,
+    formats: const [BarcodeFormat.qrCode],
+  );
 
   bool _handled = false;
 
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
   void _handleCode(Barcode? code) {
     if (code == null || code.rawValue == null || _handled) return;
-    final result = parseQrPayload(code.rawValue!);
+    final manager = context.read<ConnectionManager>();
     final messenger = ScaffoldMessenger.of(context);
-    if (result == null) {
+    if (!manager.applyQrPayload(code.rawValue!)) {
       messenger.showSnackBar(
         const SnackBar(
             content: Text('Not a valid PulsePad QR code'),
@@ -34,19 +42,11 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     }
 
     _handled = true;
-    final mode = result.mode == 'tcp'
-        ? ConnectionMode.usb
-        : ConnectionMode.wifi;
-    context.read<ConnectionManager>().applyQr(
-          result.host,
-          mode,
-          result.tcpPort,
-          result.udpPort,
-        );
+    final isWifi = manager.mode == ConnectionMode.wifi;
     messenger.showSnackBar(
       SnackBar(
         content: Text(
-            'Loaded ${result.host} (${mode == ConnectionMode.wifi ? "Wi-Fi" : "USB"})'),
+            'Loaded ${manager.ipAddress} (${isWifi ? "Wi-Fi" : "USB"})'),
         backgroundColor: const Color(0xFF22C55E),
       ),
     );
@@ -55,9 +55,6 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final scanWindow =
-        Rect.fromCenter(center: Offset.zero, width: 250, height: 250);
-
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(title: const Text('Scan PC QR'),
@@ -65,14 +62,11 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
           foregroundColor: Colors.white),
       body: Stack(
         children: [
+          // Detection covers the WHOLE preview (no scanWindow restriction) so
+          // the QR is caught no matter where it is on screen.
           MobileScanner(
+            controller: _controller,
             fit: BoxFit.cover,
-            scanWindow: _isLandscape
-                ? Rect.fromCenter(
-                    center: const Offset(0, 0),
-                    width: 260,
-                    height: 260)
-                : scanWindow,
             errorBuilder: (context, error, child) => const Center(
               child: Text('Camera error',
                   style: TextStyle(color: Colors.white)),
@@ -81,6 +75,19 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
               _handleCode(
                   capture.barcodes.isNotEmpty ? capture.barcodes.first : null);
             },
+          ),
+          // Decorative guide box only — does NOT restrict detection.
+          Center(
+            child: Container(
+              width: 250,
+              height: 250,
+              decoration: BoxDecoration(
+                border: Border.all(
+                    color: const Color(0xFF22C55E).withOpacity(0.6),
+                    width: 2),
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
           ),
           Positioned(
             bottom: 64,

@@ -68,22 +68,6 @@ const Map<String, int> kBtnHiNames = {
 
 int _header(int type) => (kProtocolVersion << 4) | type;
 
-/// A decoded gamepad snapshot.
-class GamepadState {
-  final int buttonsLo;
-  final int buttonsHi;
-  final int lx, ly, rx, ry;
-  final int l2, r2;
-
-  GamepadState(this.buttonsLo, this.buttonsHi,
-      this.lx, this.ly, this.rx, this.ry, this.l2, this.r2);
-
-  bool isDown(int flag) => (buttonsLo & flag) != 0;
-  bool isDownHi(int flag) => (buttonsHi & flag) != 0;
-
-  double axisFloat(int v) => v / 32767.0;
-}
-
 /// Encode the full controller snapshot as a 13-byte packet.
 Uint8List encodeGamepad({
   required int buttonsLo,
@@ -108,21 +92,6 @@ Uint8List encodeGamepad({
   return b.buffer.asUint8List();
 }
 
-GamepadState? decodeGamepad(Uint8List data) {
-  if (data.length < kGamepadSize) return null;
-  final b = ByteData.sublistView(data);
-  return GamepadState(
-    b.getUint8(1),
-    b.getUint8(2),
-    b.getInt16(3, Endian.little),
-    b.getInt16(5, Endian.little),
-    b.getInt16(7, Endian.little),
-    b.getInt16(9, Endian.little),
-    b.getUint8(11),
-    b.getUint8(12),
-  );
-}
-
 Uint8List encodePing(int timestampMs, [int seq = 0]) {
   final b = ByteData(kPingSize);
   b.setUint8(0, _header(kTypePing));
@@ -145,17 +114,6 @@ Uint8List encodePong(int timestampMs, [int seq = 0]) {
   return (b.getInt64(1, Endian.little), b.getUint16(9, Endian.little));
 }
 
-Uint8List encodeHaptic(int durationMs, double intensity, [int motor = 0]) {
-  final d = (durationMs ~/ 10).clamp(0, 255);
-  final i = (intensity.clamp(0.0, 1.0) * 255).round().clamp(0, 255);
-  final b = ByteData(kHapticSize);
-  b.setUint8(0, _header(kTypeHaptic));
-  b.setUint8(1, d);
-  b.setUint8(2, i);
-  b.setUint8(3, motor & 0x01);
-  return b.buffer.asUint8List();
-}
-
 (int, double, int)? decodeHaptic(Uint8List data) {
   if (data.length < kHapticSize) return null;
   final b = ByteData.sublistView(data);
@@ -171,11 +129,6 @@ Uint8List encodeHello() => Uint8List.fromList([_header(kTypeHello)]);
 int typeOf(Uint8List data) {
   if (data.isEmpty) return -1;
   return data[0] & 0x0F;
-}
-
-int versionOf(Uint8List data) {
-  if (data.isEmpty) return 0;
-  return (data[0] & 0xF0) >> 4;
 }
 
 int floatToI16(double v) {

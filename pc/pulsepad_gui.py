@@ -48,7 +48,7 @@ class PulsePadGUI:
         self._status_thread = None
 
         root.title("PulsePad Control Center")
-        root.geometry("620x560")
+        root.geometry("640x620")
         root.protocol("WM_DELETE_WINDOW", self._on_close)
 
         # ---- toolbar ----
@@ -101,7 +101,7 @@ class PulsePadGUI:
                                  command=self._toggle_qr)
         self.qr_btn.pack(side="right")
 
-        self.qr_canvas = tk.Canvas(qr_frame, width=240, height=240,
+        self.qr_canvas = tk.Canvas(qr_frame, width=300, height=300,
                                    bg="white", highlightthickness=0)
         self.qr_visible = False
         self._qr_payload = None
@@ -120,12 +120,24 @@ class PulsePadGUI:
     # ------------------------------------------------------------------ #
     @staticmethod
     def _local_ip():
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # Preferred: the IP that can reach the internet (the "primary" NIC).
         try:
-            s.connect(("8.8.8.8", 80))
-            return s.getsockname()[0]
-        finally:
-            s.close()
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                s.connect(("8.8.8.8", 80))
+                return s.getsockname()[0]
+            finally:
+                s.close()
+        except OSError:
+            pass
+        # Offline LANs: resolve the hostname to a real LAN address.
+        try:
+            for addr in socket.gethostbyname_ex(socket.gethostname())[2]:
+                if not addr.startswith("127."):
+                    return addr
+        except OSError:
+            pass
+        return "127.0.0.1"
 
     # ------------------------------------------------------------------ #
     def _toggle_qr(self):
@@ -136,6 +148,9 @@ class PulsePadGUI:
             return
         payload = self._qr_payload or self._qr_payload_for()
         if not payload:
+            return
+        if qrcode is None:
+            self.log_line("  ! 'qrcode' module not installed; cannot show QR")
             return
         self._draw_qr(payload)
         self.qr_canvas.pack(pady=(8, 0))
@@ -158,21 +173,18 @@ class PulsePadGUI:
         return self._qr_payload
 
     def _draw_qr(self, payload):
-        if qrcode is None:
-            self.log_line("  ! 'qrcode' module not installed; cannot show QR")
-            return
         qr = qrcode.QRCode(border=1)
         qr.add_data(payload)
         qr.make(fit=True)
-        matrix = qr.get_matrix()          # list[list[bool]]
+        matrix = qr.get_matrix()          # list[list[bool]] (no quiet zone)
         n = len(matrix)
-        size = 240
+        size = 300
         self.qr_canvas.delete("all")
-        cell = size / float(n + 2)        # border=1 on each side
+        cell = size / float(n + 2)        # reserve 1-module quiet zone each side
         for r, row in enumerate(matrix):
             for c, dark in enumerate(row):
                 if dark:
-                    x0, y0 = c * cell, r * cell
+                    x0, y0 = (c + 1) * cell, (r + 1) * cell
                     x1, y1 = x0 + cell, y0 + cell
                     self.qr_canvas.create_rectangle(x0, y0, x1, y1,
                                                     fill="black", outline="")

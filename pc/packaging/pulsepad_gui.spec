@@ -17,7 +17,7 @@ import os
 # PyInstaller exec()s this spec, so os.path.dirname(__file__) is unavailable.
 # SPECPATH is defined by PyInstaller and points to the spec file's directory.
 here = os.path.abspath(SPECPATH)
-daemon = os.path.abspath(os.path.join(here, "..", "daemon"))
+daemon = os.path.abspath(os.path.join(here, ".."))
 
 a = Analysis(
     [os.path.join(daemon, "pulsepad_gui.py")],

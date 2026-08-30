@@ -38,6 +38,10 @@ class ConnectionManager extends ChangeNotifier {
   RawDatagramSocket? _udp;
   final List<DiscoveredServer> _discovered = [];
 
+  // Set during the UDP connect handshake; completes once the PC proves it is
+  // reachable (beacon "PPB1" reply to our HELLO, or a PONG to our PING).
+  Completer<void>? _connectAck;
+
   // Controller state + coalescing
   final ControllerState controller = ControllerState();
   final Queue<Uint8List> _queue = Queue();
@@ -85,13 +89,17 @@ class ConnectionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Apply settings decoded from a scanned QR code.
-  void applyQr(String host, ConnectionMode mode, int tcpPort, int udpPort) {
-    _typedIp = host.trim();
-    _mode = mode;
-    _qrTcpPort = tcpPort;
-    _qrUdpPort = udpPort;
+  /// Try to decode [raw] as a PulsePad QR payload and auto-fill the
+  /// connection settings (host, mode, ports). Returns true on success.
+  bool applyQrPayload(String raw) {
+    final p = parseQrPayload(raw);
+    if (p == null) return false;
+    _typedIp = p.host.trim();
+    _mode = p.mode == 'tcp' ? ConnectionMode.usb : ConnectionMode.wifi;
+    _qrTcpPort = p.tcpPort;
+    _qrUdpPort = p.udpPort;
     notifyListeners();
+    return true;
   }
 
   int get qrUdpPort => _qrUdpPort;
@@ -212,8 +220,25 @@ class ConnectionManager extends ChangeNotifier {
     _udp = sock;
     sock.listen(_onUdpPacket);
 
-    // Announce ourselves so the daemon knows our source address.
+    // Announce ourselves, then PING so the daemon answers -> reachability proof
+    // instead of optimistically reporting "Connected" to a dead host.
     sock.send(p.encodeHello(), target.addr, target.port);
+    final ack = Completer<void>();
+    _connectAck = ack;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _pendingPingAt = DateTime.fromMillisecondsSinceEpoch(now);
+    _pendingPingSeq = _pingSeq++;
+    sock.send(p.encodePing(now, _pendingPingSeq), target.addr, target.port);
+    try {
+      await ack.future.timeout(const Duration(seconds: 3));
+    } on TimeoutException {
+      sock.close();
+      _udp = null;
+      throw StateError('No PulsePad PC at ${target.addr.address}:${target.port}.'
+          '\nStart the Control Center daemon and check the IP.');
+    } finally {
+      _connectAck = null;
+    }
 
     _statsTimer?.cancel();
     _statsTimer = Timer.periodic(const Duration(milliseconds: 800), (_) {
@@ -262,6 +287,21 @@ class ConnectionManager extends ChangeNotifier {
     if (event != RawSocketEvent.read) return;
     final dm = _udp?.receive();
     if (dm == null || dm.data.isEmpty) return;
+
+    // UDP handshake: the PC answers our HELLO with a "PPB1" beacon and our
+    // PING with a PONG. Either one proves reachability while connecting.
+    if (_connectAck != null) {
+      final b = dm.data;
+      final isBeacon = b.length >= 4 && b[0] == 0x50 &&
+          b[1] == 0x50 && b[2] == 0x42 && b[3] == 0x31;
+      final t = b[0] & 0x0F;
+      if (isBeacon || t == p.kTypePong || t == p.kTypePing) {
+        final c = _connectAck!;
+        _connectAck = null;
+        if (!c.isCompleted) c.complete();
+      }
+    }
+
     final t = dm.data[0] & 0x0F;
     if (t == p.kTypeHello || t == p.kTypeGamepad) {
       // Not expected inbound on the phone, ignore.
@@ -395,6 +435,7 @@ class ConnectionManager extends ChangeNotifier {
     _reconnectTimer?.cancel();
     _pingTimer?.cancel();
     _statsTimer?.cancel();
+    _connectAck = null;
     _tcp?.destroy();
     _tcp = null;
     _udp?.close();

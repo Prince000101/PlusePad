@@ -40,20 +40,21 @@ The app sends **complete snapshots** (no history / ordering) — a dropped packe
 ## 📦 Project layout
 
 ```
-pulsepad_app/                       # Flutter (Dart) Android app — the controller
+phone/                           # Flutter (Dart) — the Android controller app
   lib/services/protocol.dart          byte-compatible binary protocol
   lib/services/connection_manager.dart  UDP/TCP, discovery, reconnect, latency
   lib/screens/controller_screen.dart    gamepad/PSP/PS5/mouse/keyboard layouts
   lib/screens/connection_screen.dart    connect + auto-discover UI
   lib/screens/qr_scanner_screen.dart    scan the PC's QR code to auto-fill IP/ports
-daemon/                            # Python 3 daemon — creates the virtual gamepad
-  pulsedad.py                        headless CLI daemon
-  pulsepad_gui.py                    Control Center desktop GUI (Tkinter)
-  pulsepad/protocol.py               binary protocol
-  pulsepad/server.py                 TCP/UDP/discovery server + haptics
-  pulsepad/virtual_device.py         cross-platform virtual gamepad backends
-  pulsepad/qr_config.py              shared QR connection payload format
-  tests/                             24 unit tests (real loopback sockets)
+pc/                              # Python 3 daemon — creates the virtual gamepad
+  pulsedad.py                      headless CLI daemon
+  pulsepad_gui.py                  Control Center desktop GUI (Tkinter)
+  pulsepad/protocol.py             binary protocol
+  pulsepad/server.py               TCP/UDP/discovery server + haptics
+  pulsepad/virtual_device.py       cross-platform virtual gamepad backends
+  pulsepad/qr_config.py            shared QR connection payload format
+  tests/                           24 unit tests (real loopback sockets)
+  packaging/                       PyInstaller spec + per-OS build scripts
 ```
 
 ---
@@ -65,7 +66,7 @@ daemon/                            # Python 3 daemon — creates the virtual gam
 The **Control Center** GUI starts/stops the daemon, shows live status (server state, phone connected, latency, PC IP), and can **show a QR code** that encodes the PC's address + ports. Scan it with the phone app to connect instantly — no typing.
 
 ```bash
-cd daemon
+cd pc
 pip install -r requirements.txt        # only the lines matching your OS
 
 # Linux / macOS:
@@ -77,7 +78,7 @@ python  pulsepad_gui.py
 ### Option B — Headless CLI
 
 ```bash
-cd daemon
+cd pc
 # Linux (virtual pad via uinput):
 sudo python3 pulsedad.py                        # or: sudo chmod 666 /dev/uinput
 # Windows (install ViGEmBus, then):
@@ -92,23 +93,23 @@ One command per OS produces a single portable app you can drop on the Desktop:
 
 ```bash
 # On Windows → dist/PulsePad.exe
-packaging/build_windows.bat
+cd pc && cmd /c packaging/build_windows.bat
 
 # On macOS   → dist/PulsePad.app
-./packaging/build_mac.sh
+cd pc && ./packaging/build_mac.sh
 
 # On Linux   → dist/PulsePad (single executable)
-./packaging/build_linux.sh
+cd pc && ./packaging/build_linux.sh
 ```
 
-Build on each OS to get that OS's binary. See [`packaging/README.md`](packaging/README.md).
+Build on each OS to get that OS's binary. See [`packaging/README.md`](pc/packaging/README.md).
 
 ---
 
 ## 📱 Build & install the phone app
 
 ```bash
-cd pulsepad_app
+cd phone
 flutter pub get
 flutter build apk --release
 # APK output:  build/app/outputs/flutter-apk/app-release.apk
@@ -172,11 +173,11 @@ Beacon: `"PPB1"` + udp_port(2,big) + tcp_port(2,big) + len + name.
 ## 🧪 Running the tests
 
 ```bash
-# daemon — 24 tests, real sockets, no root needed
-cd daemon && python3 -m unittest discover -s tests -v
+# pc — 24 tests, real sockets, no root needed
+cd pc && python3 -m unittest discover -s tests -v
 
 # app
-cd pulsepad_app && flutter analyze && flutter test
+cd phone && flutter analyze && flutter test
 ```
 
 ---

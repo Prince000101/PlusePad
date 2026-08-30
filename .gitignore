@@ -10,19 +10,17 @@ venv/
 build/
 dist/
 
-# Flutter / Dart
-pulsepad_app/build/
-pulsepad_app/.dart_tool/
-pulsepad_app/.flutter-plugins
-pulsepad_app/.flutter-plugins-dependencies
-pulsepad_app/.packages
-pulsepad_app/.pub-cache/
-pulsepad_app/.pub/
+# Flutter / Dart (phone app)
+phone/build/
+phone/.dart_tool/
+phone/.flutter-plugins
+phone/.flutter-plugins-dependencies
+phone/.packages
+phone/.pub-cache/
+phone/.pub/
 *.iml
 *.apk
 *.aab
-ios/Pods/
-.android/
 
 # IDE / OS
 .idea/
