@@ -84,6 +84,23 @@ python pulsedad.py --backend=windows
 
 > No sudo needed to test the server / Wi-Fi: add `--no-virtual-device`.
 
+### Option C — Package a standalone desktop app (no Python needed)
+
+One command per OS produces a single portable app you can drop on the Desktop:
+
+```bash
+# On Windows → dist/PulsePad.exe
+packaging/build_windows.bat
+
+# On macOS   → dist/PulsePad.app
+./packaging/build_mac.sh
+
+# On Linux   → dist/PulsePad (single executable)
+./packaging/build_linux.sh
+```
+
+Build on each OS to get that OS's binary. See [`packaging/README.md`](packaging/README.md).
+
 ---
 
 ## 📱 Build & install the phone app

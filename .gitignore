@@ -6,6 +6,10 @@ __pycache__/
 .venv/
 venv/
 
+# PyInstaller packaged apps (outputs of the build scripts)
+build/
+dist/
+
 # Flutter / Dart
 pulsepad_app/build/
 pulsepad_app/.dart_tool/
