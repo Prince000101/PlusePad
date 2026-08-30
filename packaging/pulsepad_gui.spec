@@ -28,6 +28,7 @@ a = Analysis(
         "pulsepad.protocol",
         "pulsepad.server",
         "pulsepad.virtual_device",
+        "pulsepad.qr_config",
     ],
     hookspath=[],
     hooksconfig={},

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../services/connection_manager.dart';
 import 'controller_screen.dart';
 import 'settings_screen.dart';
+import 'qr_scanner_screen.dart';
 import '../models/packet.dart';
 
 class ConnectionScreen extends StatefulWidget {
@@ -466,6 +467,14 @@ class _ConnectionScreenState extends State<ConnectionScreen> with SingleTickerPr
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
+        TextButton.icon(
+          onPressed: _openQrScanner,
+          icon: const Icon(Icons.qr_code_scanner, color: Color(0xFF22C55E)),
+          label: const Text(
+            'Scan QR',
+            style: TextStyle(color: Colors.white70, fontSize: 13),
+          ),
+        ),
         IconButton(
           icon: const Icon(Icons.settings, color: Colors.white30),
           onPressed: () => Navigator.push(
@@ -475,6 +484,16 @@ class _ConnectionScreenState extends State<ConnectionScreen> with SingleTickerPr
         ),
       ],
     );
+  }
+
+  Future<void> _openQrScanner() async {
+    final manager = context.read<ConnectionManager>();
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const QrScannerScreen()),
+    );
+    _ipController.text = manager.ipAddress;
+    setState(() {});
   }
 
   void _handleConnect(BuildContext context, ConnectionManager manager) async {

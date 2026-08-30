@@ -29,6 +29,10 @@ class ConnectionManager extends ChangeNotifier {
   ControllerLayout _layout = ControllerLayout.gamepad;
   String _typedIp = '';
 
+  // Ports supplied by a scanned QR code (default -1 = use standard 5005/5006).
+  int _qrUdpPort = -1;
+  int _qrTcpPort = -1;
+
   // Transports
   Socket? _tcp;
   RawDatagramSocket? _udp;
@@ -80,6 +84,18 @@ class ConnectionManager extends ChangeNotifier {
     _typedIp = ip.trim();
     notifyListeners();
   }
+
+  /// Apply settings decoded from a scanned QR code.
+  void applyQr(String host, ConnectionMode mode, int tcpPort, int udpPort) {
+    _typedIp = host.trim();
+    _mode = mode;
+    _qrTcpPort = tcpPort;
+    _qrUdpPort = udpPort;
+    notifyListeners();
+  }
+
+  int get qrUdpPort => _qrUdpPort;
+  int get qrTcpPort => _qrTcpPort;
 
   // ------------------------------------------------------------------ //
   // Discovery (hassle-free Wi-Fi setup)
@@ -170,7 +186,7 @@ class ConnectionManager extends ChangeNotifier {
     // lowest possible latency path.
     const host = '127.0.0.1';
     const port = 5005;
-    final sock = await Socket.connect(host, port,
+    final sock = await Socket.connect(host, _qrTcpPort > 0 ? _qrTcpPort : port,
         timeout: const Duration(seconds: 5));
     sock.setOption(SocketOption.tcpNoDelay, true);
     _tcp = sock;
@@ -325,7 +341,8 @@ class ConnectionManager extends ChangeNotifier {
 
   _UdpTarget? get _udpTarget {
     if (_typedIp.isNotEmpty) {
-      return _UdpTarget(InternetAddress(_typedIp), 5006);
+      return _UdpTarget(InternetAddress(_typedIp),
+          _qrUdpPort > 0 ? _qrUdpPort : 5006);
     }
     if (_discovered.isNotEmpty) {
       final s = _discovered.first;

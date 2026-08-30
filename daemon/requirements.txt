@@ -12,3 +12,6 @@ python-evdev>=1.6.0
 # vigem-client
 
 # macOS (userspace driver only; no virtual gamepad yet, daemon still runs).
+
+# Needed by the desktop GUI to show the QR code you scan with the phone:
+qrcode>=7.4

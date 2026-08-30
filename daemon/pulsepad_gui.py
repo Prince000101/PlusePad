@@ -31,6 +31,12 @@ sys.path.insert(0, HERE)
 
 from pulsepad.server import PulsePadServer   # noqa: E402
 from pulsepad.virtual_device import VirtualGamepad  # noqa: E402
+from pulsepad import qr_config  # noqa: E402
+
+try:
+    import qrcode  # pure Python, optional at runtime
+except ImportError:
+    qrcode = None
 
 
 class PulsePadGUI:
@@ -81,6 +87,25 @@ class PulsePadGUI:
                   foreground="#666").grid(row=2, column=0, columnspan=2,
                                           sticky="w", pady=(6, 0))
 
+        # ---- QR connect ----
+        qr_frame = ttk.LabelFrame(root, text="Connect by QR (Wi-Fi)", padding=8)
+        qr_frame.pack(fill="x", padx=10, pady=(0, 8))
+        qr_row = ttk.Frame(qr_frame)
+        qr_row.pack(fill="x")
+
+        ttk.Label(
+            qr_row,
+            text="Scan this code with the PulsePad phone app to connect instantly:",
+            foreground="#333").pack(side="left")
+        self.qr_btn = ttk.Button(qr_row, text="Show QR",
+                                 command=self._toggle_qr)
+        self.qr_btn.pack(side="right")
+
+        self.qr_canvas = tk.Canvas(qr_frame, width=240, height=240,
+                                   bg="white", highlightthickness=0)
+        self.qr_visible = False
+        self._qr_payload = None
+
         # ---- log ----
         logf = ttk.LabelFrame(root, text="Log", padding=6)
         logf.pack(fill="both", expand=True, padx=10, pady=(0, 10))
@@ -101,6 +126,57 @@ class PulsePadGUI:
             return s.getsockname()[0]
         finally:
             s.close()
+
+    # ------------------------------------------------------------------ #
+    def _toggle_qr(self):
+        if self.qr_visible:
+            self.qr_canvas.pack_forget()
+            self.qr_visible = False
+            self.qr_btn.config(text="Show QR")
+            return
+        payload = self._qr_payload or self._qr_payload_for()
+        if not payload:
+            return
+        self._draw_qr(payload)
+        self.qr_canvas.pack(pady=(8, 0))
+        self.qr_visible = True
+        self.qr_btn.config(text="Hide QR")
+        self.log_line(f"[qr] QR payload: {payload}")
+
+    def _qr_payload_for(self):
+        try:
+            host = self._local_ip()
+        except Exception:
+            self.log_line("  ! cannot detect local IP for QR")
+            return None
+        if self.server is not None:
+            tcp = self.server.tcp_port
+            udp = self.server.udp_port
+        else:
+            tcp, udp = 5005, 5006
+        self._qr_payload = qr_config.build_payload("udp", host, tcp, udp)
+        return self._qr_payload
+
+    def _draw_qr(self, payload):
+        if qrcode is None:
+            self.log_line("  ! 'qrcode' module not installed; cannot show QR")
+            return
+        qr = qrcode.QRCode(border=1)
+        qr.add_data(payload)
+        qr.make(fit=True)
+        matrix = qr.get_matrix()          # list[list[bool]]
+        n = len(matrix)
+        size = 240
+        self.qr_canvas.delete("all")
+        cell = size / float(n + 2)        # border=1 on each side
+        for r, row in enumerate(matrix):
+            for c, dark in enumerate(row):
+                if dark:
+                    x0, y0 = c * cell, r * cell
+                    x1, y1 = x0 + cell, y0 + cell
+                    self.qr_canvas.create_rectangle(x0, y0, x1, y1,
+                                                    fill="black", outline="")
+        self.qr_canvas.config(width=size, height=size)
 
     # ------------------------------------------------------------------ #
     def log_line(self, msg):

@@ -11,11 +11,11 @@ Free • Open source • Cross-platform (Windows / Linux / macOS) • No account
 - **Real low latency** — self-contained binary protocol, coalesced 250 Hz sampling (USB ~1–5 ms, Wi-Fi ~5–15 ms).
 - **Full PS2 / PSP pad** — D-pad, L1/R1/L2/R2 (analog + digital), L3/R3, SELECT/START, dual analog sticks.
 - **Works on every PC** — Linux `uinput`, Windows ViGEmBus, macOS; graceful fallback if no driver.
-- **Hassle-free connection** — one-tap Wi-Fi **auto-discovery** (no IP typing) *or* ultra-stable USB via `adb reverse`.
-- **Zero-config desktop GUI** — a **Control Center** window to start/stop the daemon and watch live connection status & latency. Closing the window stops the daemon completely.
+- **Hassle-free connection** — one-tap Wi-Fi **auto-discovery** *or* **QR scan** of the PC screen (auto-fills IP + ports) *or* ultra-stable USB via `adb reverse`.
+- **Zero-config desktop GUI** — a **Control Center** window to start/stop the daemon, watch live connection status & latency, and **display a QR code** you scan with the phone to connect instantly. Closing the window stops the daemon completely.
 - **Auto-reconnect** — link recovers automatically; real PING/PONG latency display.
 - **Haptic feedback** — rumble support, plus Gamepad / PSP / PS5 / Mouse / Keyboard layouts on the phone.
-- **Tested** — 16 daemon unit tests (real sockets) + Flutter analyze clean & widget tests green.
+- **Tested** — 24 daemon unit tests (real sockets) + Flutter analyze clean & widget tests green.
 
 ---
 
@@ -45,13 +45,15 @@ pulsepad_app/                       # Flutter (Dart) Android app — the control
   lib/services/connection_manager.dart  UDP/TCP, discovery, reconnect, latency
   lib/screens/controller_screen.dart    gamepad/PSP/PS5/mouse/keyboard layouts
   lib/screens/connection_screen.dart    connect + auto-discover UI
+  lib/screens/qr_scanner_screen.dart    scan the PC's QR code to auto-fill IP/ports
 daemon/                            # Python 3 daemon — creates the virtual gamepad
   pulsedad.py                        headless CLI daemon
   pulsepad_gui.py                    Control Center desktop GUI (Tkinter)
   pulsepad/protocol.py               binary protocol
   pulsepad/server.py                 TCP/UDP/discovery server + haptics
   pulsepad/virtual_device.py         cross-platform virtual gamepad backends
-  tests/                             16 unit tests (real loopback sockets)
+  pulsepad/qr_config.py              shared QR connection payload format
+  tests/                             24 unit tests (real loopback sockets)
 ```
 
 ---
@@ -60,7 +62,7 @@ daemon/                            # Python 3 daemon — creates the virtual gam
 
 ### Option A — Desktop GUI app (easiest, recommended)
 
-The **Control Center** GUI starts/stops the daemon and shows live status (server state, phone connected, latency, PC IP). Closing the window **stops the daemon completely** — no stray background processes.
+The **Control Center** GUI starts/stops the daemon, shows live status (server state, phone connected, latency, PC IP), and can **show a QR code** that encodes the PC's address + ports. Scan it with the phone app to connect instantly — no typing.
 
 ```bash
 cd daemon
@@ -122,7 +124,10 @@ Or `flutter run` with a device connected.
 **Wi-Fi (wireless, zero-config):**
 1. Phone and PC on the same network.
 2. Tap **Connect** — the app auto-discovers the PC (or enter the IP shown in the Control Center).
-3. Auto-reconnect keeps it stable over Wi-Fi.
+
+**Wi-Fi via QR (no typing at all):**
+1. In the Control Center click **Show QR**.
+2. On the phone tap **Scan QR** and point it at the PC screen — the app auto-fills the IP, ports and mode, then just tap **Connect**.
 
 **USB (lowest latency, no Wi-Fi):**
 ```bash
@@ -167,7 +172,7 @@ Beacon: `"PPB1"` + udp_port(2,big) + tcp_port(2,big) + len + name.
 ## 🧪 Running the tests
 
 ```bash
-# daemon — 16 tests, real sockets, no root needed
+# daemon — 24 tests, real sockets, no root needed
 cd daemon && python3 -m unittest discover -s tests -v
 
 # app

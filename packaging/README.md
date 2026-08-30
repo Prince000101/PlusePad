@@ -41,4 +41,4 @@ Then copy `dist/PulsePad` (`.exe` / `.app`) to your Desktop, `~/bin`, or anywher
 
 ## What the packaged app does
 
-Exactly the same as `python3 pulsepad_gui.py`: a small window to **start/stop the PulsePad daemon**, show live connection status (server state, connected phone, latency ms, PC IP), and a log. **Closing the window stops the daemon** — no background processes.
+Exactly the same as `python3 pulsepad_gui.py`: a small window to **start/stop the PulsePad daemon**, show live connection status (server state, connected phone, latency ms, PC IP), **show a QR code** the phone scans to auto-fill IP + ports, and a log. **Closing the window stops the daemon** — no background processes.
