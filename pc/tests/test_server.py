@@ -31,7 +31,6 @@ class _RecordingPad(VirtualGamepad):
 class TestServer(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        # Use ephemeral-ish high ports to avoid colliding in parallel CI runs.
         cls.tcp_port = 15105
         cls.udp_port = 15106
         cls.disc_port = 15107
@@ -41,6 +40,19 @@ class TestServer(unittest.TestCase):
             discovery_port=cls.disc_port)
         cls.server.start()
         time.sleep(0.3)
+
+    def setUp(self):
+        # Clear stale UDP peers and TCP clients so tests don't leak state.
+        with self.server._udp_peers_lock:
+            self.server._udp_peers.clear()
+        with self.server._tcp_lock:
+            for c in list(self.server._tcp_clients):
+                try:
+                    c.close()
+                except OSError:
+                    pass
+            self.server._tcp_clients.clear()
+        self.pad.calls.clear()
 
     @classmethod
     def tearDownClass(cls):
@@ -139,6 +151,88 @@ class TestServer(unittest.TestCase):
         d, i, m = P.decode_haptic(data)
         self.assertEqual((d, m), (300, 1))
         self.assertAlmostEqual(i, 0.9, places=1)
+
+    def test_udp_phone_counted_then_pruned(self):
+        # A Wi-Fi phone is tracked by last-seen; it must register immediately
+        # and decay away once it stops sending (no phantom "connected").
+        old = PulsePadServer._UDP_PEER_TIMEOUT
+        PulsePadServer._UDP_PEER_TIMEOUT = 0.5
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.sendto(P.encode_gamepad(0, 0, 0, 0, 0, 0, 0, 0),
+                     ("127.0.0.1", self.udp_port))
+            time.sleep(0.2)  # let the server thread receive the datagram
+            self.assertEqual(self.server.client_count, 1)
+            # TCP clients should be zero in this sub-test.
+            tcp, udp = self.server.transport_counts
+            self.assertEqual(tcp, 0)
+            self.assertEqual(udp, 1)
+            deadline = time.time() + 3.0
+            while self.server.client_count:
+                if time.time() > deadline:
+                    break
+                time.sleep(0.05)
+            self.assertEqual(self.server.client_count, 0,
+                             "stale Wi-Fi peer was not pruned")
+            s.close()
+        finally:
+            PulsePadServer._UDP_PEER_TIMEOUT = old
+
+    def test_simulated_phone_streams_and_counts(self):
+        # The simulate_phone helper must be treated like a real phone:
+        # it registers as a UDP peer, streams controller state and PINGs.
+        import simulate_phone
+        t = threading.Thread(target=simulate_phone.stream,
+                             kwargs={"host": "127.0.0.1",
+                                     "port": self.udp_port,
+                                     "duration": 1.0},
+                             daemon=True)
+        t.start()
+        deadline = time.time() + 3.0
+        saw_button = False
+        while time.time() < deadline:
+            for c in self.pad.calls:
+                if c[0] & P.BTN_A:
+                    saw_button = True
+                    break
+            if saw_button and self.server.client_count >= 1:
+                break
+            time.sleep(0.02)
+        t.join(timeout=3)
+        self.assertTrue(saw_button,
+                        "simulated phone never sent a BTN_A snapshot")
+        self.assertGreaterEqual(self.server.client_count, 1,
+                                "simulated phone not counted as connected")
+
+    def test_transport_counts_split(self):
+        # TCP clients and UDP peers are accounted separately.
+        # Pre-seed a UDP peer so we see both counts split.
+        s_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s_udp.sendto(P.encode_gamepad(0, 0, 0, 0, 0, 0, 0, 0),
+                     ("127.0.0.1", self.udp_port))
+        time.sleep(0.2)  # let server thread process the datagram
+        s_tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s_tcp.settimeout(2)
+        s_tcp.connect(("127.0.0.1", self.tcp_port))
+        # Poll until the accept thread registers the TCP client, sending keep
+        # -alive PINGs so the server's recv loop never sees the connection drop.
+        deadline = time.time() + 2.0
+        kept = 0
+        while time.time() < deadline:
+            s_tcp.sendall(P.encode_ping(int(time.time() * 1000), kept))
+            kept += 1
+            tc = self.server.transport_counts
+            if tc[0] >= 1 and tc[1] >= 1:
+                break
+            time.sleep(0.05)
+        else:
+            tc = self.server.transport_counts
+        tcp, udp = tc
+        self.assertGreaterEqual(tcp, 1, "TCP client not tracked")
+        self.assertGreaterEqual(udp, 1, "UDP peer not tracked")
+        s_tcp.close()
+        s_udp.close()
+        time.sleep(0.3)
 
 
 from pulsepad.server import parse_beacon  # noqa: E402

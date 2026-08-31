@@ -57,6 +57,9 @@ def parse_beacon(data: bytes):
 
 
 class PulsePadServer:
+    # A Wi-Fi peer is considered connected while we see data within this window.
+    _UDP_PEER_TIMEOUT = 3.0
+
     def __init__(self, gamepad: VirtualGamepad,
                  tcp_port=TCP_PORT, udp_port=UDP_PORT,
                  discovery_port=DISCOVERY_PORT,
@@ -84,6 +87,12 @@ class PulsePadServer:
 
         self._tcp_clients = []
         self._tcp_lock = threading.Lock()
+
+        # Active UDP peers (Wi-Fi phones): addr -> last-seen (epoch seconds).
+        # UDP is connectionless, so a peer counts as "connected" while it keeps
+        # sending us data; stale peers are pruned after a few seconds.
+        self._udp_peers = {}
+        self._udp_peers_lock = threading.Lock()
 
     # ------------------------------------------------------------------ #
     def start(self):
@@ -138,6 +147,36 @@ class PulsePadServer:
                 except OSError:
                     pass
             self._tcp_clients.clear()
+        with self._udp_peers_lock:
+            self._udp_peers.clear()
+
+    @property
+    def client_count(self) -> int:
+        """Number of phones actively connected (TCP + recent UDP peers)."""
+        with self._tcp_lock:
+            tcp = len(self._tcp_clients)
+        with self._udp_peers_lock:
+            now = time.time()
+            stale = [a for a, t in self._udp_peers.items()
+                     if now - t > self._UDP_PEER_TIMEOUT]
+            for a in stale:
+                del self._udp_peers[a]
+            udp = len(self._udp_peers)
+        return tcp + udp
+
+    @property
+    def transport_counts(self):
+        """(tcp, udp) client counts, useful for status display."""
+        with self._tcp_lock:
+            tcp = len(self._tcp_clients)
+        with self._udp_peers_lock:
+            now = time.time()
+            stale = [a for a, t in self._udp_peers.items()
+                     if now - t > self._UDP_PEER_TIMEOUT]
+            for a in stale:
+                del self._udp_peers[a]
+            udp = len(self._udp_peers)
+        return tcp, udp
 
     # ------------------------------------------------------------------ #
     # UDP: pure streaming. Every datagram is a full controller snapshot.
@@ -151,6 +190,8 @@ class PulsePadServer:
                 break
             if not data:
                 continue
+            with self._udp_peers_lock:
+                self._udp_peers[addr] = time.time()
             self._handle_datagram(data, addr, reliable=False, via_udp=True)
 
     # TCP: reliable control channel (also accepts full-state packets).

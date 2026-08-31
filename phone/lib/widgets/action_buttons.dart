@@ -41,12 +41,12 @@ class _ActionButtonsState extends State<ActionButtons> {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Positioned(top: 10, child: _btn('Y', const Color(0xFF22C55E))),
+          Positioned(top: 8, child: _btn('Y', const Color(0xFF22C55E))),
           Positioned(
-              left: 20, bottom: 40, child: _btn('X', const Color(0xFF3B82F6))),
+              left: 22, bottom: 38, child: _btn('X', const Color(0xFF3B82F6))),
           Positioned(
-              right: 20, bottom: 40, child: _btn('B', const Color(0xFFEF4444))),
-          Positioned(right: 10, top: 50, child: _btn('A', const Color(0xFFF59E0B))),
+              right: 22, bottom: 38, child: _btn('B', const Color(0xFFEF4444))),
+          Positioned(right: 8, top: 52, child: _btn('A', const Color(0xFFF59E0B))),
         ],
       ),
     );
@@ -54,39 +54,49 @@ class _ActionButtonsState extends State<ActionButtons> {
 
   Widget _btn(String label, Color color) {
     final isPressed = _pressed.contains(label);
+    final light = Color.lerp(color, Colors.white, 0.35)!;
     return GestureDetector(
       onTapDown: (_) => _down(label),
       onTapUp: (_) => _up(label),
       onTapCancel: () => _up(label),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 40),
+        duration: const Duration(milliseconds: 60),
         width: 56,
         height: 56,
+        transform: Matrix4.translationValues(0, isPressed ? 3 : 0, 0),
         decoration: BoxDecoration(
-          color: isPressed ? color : color.withOpacity(0.15),
           shape: BoxShape.circle,
-          border: Border.all(color: color, width: 2.5),
-          boxShadow: isPressed
-              ? [
-                  BoxShadow(
-                      color: color.withOpacity(0.6),
-                      blurRadius: 20,
-                      spreadRadius: 3),
-                ]
-              : [
-                  BoxShadow(
-                      color: color.withOpacity(0.3),
-                      blurRadius: 8,
-                      spreadRadius: 1),
-                ],
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isPressed
+                ? [light, color]
+                : [Colors.white.withOpacity(0.10), color.withOpacity(0.85)],
+          ),
+          border: Border.all(
+              color: isPressed ? light : color.withOpacity(0.9), width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(isPressed ? 0.7 : 0.4),
+              blurRadius: isPressed ? 22 : 10,
+              spreadRadius: isPressed ? 4 : 1,
+              offset: isPressed ? Offset.zero : const Offset(0, 4),
+            ),
+            BoxShadow(
+              color: Colors.black.withOpacity(0.35),
+              blurRadius: 6,
+              offset: Offset(0, isPressed ? 0 : 3),
+            ),
+          ],
         ),
         child: Center(
           child: Text(
             label,
             style: TextStyle(
-              color: isPressed ? Colors.white : color,
-              fontWeight: FontWeight.bold,
+              color: isPressed ? Colors.white : Colors.white.withOpacity(0.95),
+              fontWeight: FontWeight.w800,
               fontSize: 20,
+              shadows: const [Shadow(blurRadius: 4, color: Colors.black45)],
             ),
           ),
         ),

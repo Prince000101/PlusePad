@@ -14,6 +14,7 @@ No extra dependencies: uses Python's built-in Tkinter.
 """
 
 import ipaddress
+import math
 import socket
 import sys
 import threading
@@ -32,6 +33,7 @@ sys.path.insert(0, HERE)
 from pulsepad.server import PulsePadServer   # noqa: E402
 from pulsepad.virtual_device import VirtualGamepad  # noqa: E402
 from pulsepad import qr_config  # noqa: E402
+from pulsepad import protocol as protocol  # noqa: E402
 
 try:
     import qrcode  # pure Python, optional at runtime
@@ -61,6 +63,14 @@ class PulsePadGUI:
         self.stop_btn = ttk.Button(bar, text="■ Stop Daemon",
                                    command=self._stop, state="disabled")
         self.stop_btn.pack(side="left", padx=6)
+
+        # Simulated phone: streams a fake controller over UDP so you can test
+        # the whole pipeline (client count, latency, virtual gamepad) without
+        # touching a real phone.  Sees input in any gamepad tester.
+        self.sim_btn = ttk.Button(bar, text="▶ Simulate Phone",
+                                  command=self._toggle_sim, state="disabled")
+        self.sim_btn.pack(side="left", padx=6)
+        self._sim_stop = None
 
         self.status_lbl = ttk.Label(bar, text="● Stopped", foreground="gray")
         self.status_lbl.pack(side="right")
@@ -228,11 +238,16 @@ class PulsePadGUI:
         self.log_line(f"  backend: {self.backend_name()}")
         self.start_btn.config(state="disabled")
         self.stop_btn.config(state="normal")
+        self.sim_btn.config(state="normal")
         self._update_status()
 
     def _stop(self):
         if not self.server:
             return
+        if self._sim_stop:
+            self._sim_stop.set()
+            self._sim_stop = None
+            self.sim_btn.config(text="▶ Simulate Phone")
         self.log_line("Stopping daemon...")
         try:
             self.server.stop()
@@ -246,7 +261,63 @@ class PulsePadGUI:
             self.pad = None
         self.start_btn.config(state="normal")
         self.stop_btn.config(state="disabled")
+        self.sim_btn.config(state="disabled")
         self._update_status()
+
+    # ------------------------------------------------------------------ #
+    # Simulated phone (live test without a device)
+    # ------------------------------------------------------------------ #
+    def _toggle_sim(self):
+        if self._sim_stop:
+            self._sim_stop.set()
+            self._sim_stop = None
+            self.sim_btn.config(text="▶ Simulate Phone")
+            self.log_line("[sim] simulated phone stopped")
+            return
+        if not (self.server and self.server.running):
+            self.log_line("  ! start the daemon first")
+            return
+        self._sim_stop = threading.Event()
+        self.sim_btn.config(text="■ Simulate Off")
+        threading.Thread(target=self._sim_loop,
+                         args=(self._sim_stop,), daemon=True).start()
+        self.log_line("[sim] simulated phone streaming to the daemon "
+                      "(open a gamepad tester to see input)")
+
+    def _sim_loop(self, stop):
+        # Behaves exactly like the phone app over UDP: announces with HELLO,
+        # then streams full-state GAMEPAD snapshots and PINGs.  This drives
+        # client_count, the latency display and the virtual gamepad.
+        target = ("127.0.0.1", self.server.udp_port)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.sendto(protocol.encode_hello(), target)
+            t0 = time.time()
+            seq = 0
+            last_ping = 0.0
+            while not stop.is_set():
+                now = time.time()
+                t = (now - t0) * 2.0
+                # Rotating left stick + A held + B pulses.
+                lx = int(math.sin(t) * 32767)
+                ly = int(math.cos(t) * 32767)
+                btn = protocol.BTN_A | (protocol.BTN_B if int(now * 4) % 2 else 0)
+                s.sendto(protocol.encode_gamepad(
+                    btn & 0xFF, (btn >> 8) & 0xFF, lx, ly, 0, 0, 0, 0), target)
+                if now - last_ping > 0.5:
+                    last_ping = now
+                    s.sendto(protocol.encode_ping(int(now * 1000), seq), target)
+                seq += 1
+                stop.wait(0.01)
+        except OSError as e:
+            self.log_line(f"  ! sim socket error: {e}")
+        finally:
+            try:
+                # Recenter the stick so the pad returns to neutral.
+                s.sendto(protocol.encode_gamepad(0, 0, 0, 0, 0, 0, 0, 0), target)
+            except OSError:
+                pass
+            s.close()
 
     # ------------------------------------------------------------------ #
     def backend_name(self):
@@ -269,8 +340,16 @@ class PulsePadGUI:
         self.backend_lbl.config(text="Gamepad:  " + self.backend_name())
 
         if running:
-            n = len(list(getattr(self.server, "_tcp_clients", [])))
-            self.clients_lbl.config(text=f"Phone:    {n} connected")
+            tcp, udp = self.server.transport_counts
+            if udp and tcp:
+                label = f"Phone:    {tcp + udp} connected (USB {tcp} / Wi-Fi {udp})"
+            elif udp:
+                label = f"Phone:    {udp} connected (Wi-Fi)"
+            elif tcp:
+                label = f"Phone:    {tcp} connected (USB)"
+            else:
+                label = "Phone:    0 connected"
+            self.clients_lbl.config(text=label)
             lat = getattr(self.server, "latency_ms", 0) or 0
             self.latency_lbl.config(text=f"Latency:  {lat} ms")
         else:

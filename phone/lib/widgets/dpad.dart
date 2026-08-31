@@ -37,11 +37,10 @@ class _DPadState extends State<DPad> {
   @override
   Widget build(BuildContext context) {
     final arm = widget.size / 3;
-    const crossColor = Color(0xFF273449);
 
     Widget hitZone(String dir) {
       final isActive = _pressed.contains(dir);
-      final iconColor = isActive ? const Color(0xFF6366F1) : Colors.white54;
+      final iconColor = isActive ? const Color(0xFF818CF8) : Colors.white60;
       final icon = _dirs.firstWhere((d) => d.$1 == dir).$2;
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -53,7 +52,18 @@ class _DPadState extends State<DPad> {
           height: arm,
           color: Colors.transparent,
           alignment: Alignment.center,
-          child: Icon(icon, size: arm * 0.5, color: iconColor),
+          child: Container(
+            width: arm * 0.72,
+            height: arm * 0.72,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isActive
+                  ? const Color(0xFF6366F1).withOpacity(0.30)
+                  : Colors.white.withOpacity(0.03),
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, size: arm * 0.5, color: iconColor),
+          ),
         ),
       );
     }
@@ -67,9 +77,13 @@ class _DPadState extends State<DPad> {
         border: Border.all(color: const Color(0xFF334155), width: 2),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 3)),
+              color: Colors.black.withOpacity(0.4),
+              blurRadius: 12,
+              offset: const Offset(0, 4)),
+          BoxShadow(
+              color: const Color(0xFF6366F1).withOpacity(0.15),
+              blurRadius: 18,
+              offset: const Offset(0, 6)),
         ],
       ),
       child: Stack(
@@ -77,7 +91,7 @@ class _DPadState extends State<DPad> {
           Center(
             child: CustomPaint(
               size: Size(widget.size, widget.size),
-              painter: _CrossPainter(armWidth: arm, color: crossColor,
+              painter: _CrossPainter(armWidth: arm, color: const Color(0xFF334155),
                   active: const Color(0xFF6366F1), pressed: _pressed),
             ),
           ),
@@ -92,8 +106,10 @@ class _DPadState extends State<DPad> {
           Center(
             child: Container(
               width: arm * 0.5, height: arm * 0.5,
-              decoration: const BoxDecoration(
-                color: Color(0xFF1E293B), shape: BoxShape.circle,
+              decoration: BoxDecoration(
+                color: const Color(0xFF273449),
+                shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFF475569), width: 1),
               ),
             ),
           ),

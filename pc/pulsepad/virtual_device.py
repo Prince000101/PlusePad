@@ -113,6 +113,10 @@ class VirtualGamepad:
         except Exception as e:
             print(f"[warn] {backend} virtual gamepad unavailable ({e}). "
                   f"Running without a virtual device (daemon server still works).")
+            if sys.platform.startswith("linux") and "uinput" in str(e):
+                print("[hint] Linux: allow access to /dev/uinput with:  "
+                      "sudo chmod 666 /dev/uinput   (or run the included "
+                      "scripts/setup_linux_input.sh once for a permanent fix)")
             self._device = NullDevice()
             self._linux = False
             self.enabled = False

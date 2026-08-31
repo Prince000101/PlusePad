@@ -469,17 +469,26 @@ class _ControllerScreenState extends State<ControllerScreen>
       onTapUp: (_) => _setButton(label, false),
       onTapCancel: () => _setButton(label, false),
       child: Container(
-        width: 60, height: 32,
+        width: 60,
+        height: 34,
         decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(17),
           color: const Color(0xFF1E293B),
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: const Color(0xFF334155), width: 1),
+          border: Border.all(color: const Color(0xFF475569), width: 1.2),
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 5,
+                offset: const Offset(0, 2)),
+          ],
         ),
         alignment: Alignment.center,
         child: Text(label,
             style: const TextStyle(
-                fontSize: 9, color: Colors.white54,
-                fontWeight: FontWeight.w600)),
+                fontSize: 9,
+                color: Colors.white70,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5)),
       ),
     );
   }

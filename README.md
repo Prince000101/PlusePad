@@ -12,7 +12,7 @@ Free • Open source • Cross-platform (Windows / Linux / macOS) • No account
 - **Full PS2 / PSP pad** — D-pad, L1/R1/L2/R2 (analog + digital), L3/R3, SELECT/START, dual analog sticks.
 - **Works on every PC** — Linux `uinput`, Windows ViGEmBus, macOS; graceful fallback if no driver.
 - **Hassle-free connection** — one-tap Wi-Fi **auto-discovery** *or* **QR scan** of the PC screen (auto-fills IP + ports) *or* ultra-stable USB via `adb reverse`.
-- **Zero-config desktop GUI** — a **Control Center** window to start/stop the daemon, watch live connection status & latency, and **display a QR code** you scan with the phone to connect instantly. Closing the window stops the daemon completely.
+- **Zero-config desktop GUI** — a **Control Center** window to start/stop the daemon, watch live connection status & latency, **display a QR code** you scan with the phone to connect instantly, and a **Simulate Phone** button that streams a fake controller so you can test the whole pipeline without a device. Closing the window stops the daemon completely.
 - **Auto-reconnect** — link recovers automatically; real PING/PONG latency display.
 - **Haptic feedback** — rumble support, plus Gamepad / PSP / PS5 / Mouse / Keyboard layouts on the phone.
 - **Tested** — 24 daemon unit tests (real sockets) + Flutter analyze clean & widget tests green.
@@ -86,6 +86,23 @@ python pulsedad.py --backend=windows
 ```
 
 > No sudo needed to test the server / Wi-Fi: add `--no-virtual-device`.
+
+**Live-test without a phone (no device needed):**
+The Control Center's **▶ Simulate Phone** button (or the CLI below) streams a
+fake controller over UDP exactly like the app, so you can verify the client
+count, latency and the virtual gamepad in a tester:
+
+```bash
+# one-time: let your user create the virtual gamepad (Linux)
+sudo scripts/setup_linux_input.sh    # then run once:
+#   sudo chmod 666 /dev/uinput       # (script does this too)
+
+# watch it with a gamepad tester (rotating stick + A button)
+sudo apt install joystick && jstest /dev/input/js0
+
+# CLI-only simulated phone (no GUI needed)
+cd pc && python3 simulate_phone.py --host 127.0.0.1
+```
 
 ### Option C — Package a standalone desktop app (no Python needed)
 

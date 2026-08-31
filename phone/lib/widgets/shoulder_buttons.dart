@@ -73,35 +73,48 @@ class _ShoulderButtonsState extends State<ShoulderButtons> {
         duration: const Duration(milliseconds: 50),
         width: 56,
         height: 44,
+        transform: Matrix4.translationValues(0, isPressed ? 2 : 0, 0),
         decoration: BoxDecoration(
-          color: isPressed
-              ? const Color(0xFF6366F1)
-              : const Color(0xFF1E293B),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: isPressed
+                ? [const Color(0xFF818CF8), const Color(0xFF6366F1)]
+                : [const Color(0xFF2A3A52), const Color(0xFF1E293B)],
+          ),
           border: Border.all(
             color: isPressed
-                ? const Color(0xFF6366F1)
-                : const Color(0xFF334155),
+                ? const Color(0xFF818CF8)
+                : const Color(0xFF475569),
             width: 1.5,
           ),
-          boxShadow: isPressed
-              ? [
-                  BoxShadow(
-                      color: const Color(0xFF6366F1).withOpacity(0.4),
-                      blurRadius: 12,
-                      spreadRadius: 1),
-                ]
-              : null,
-        ),
-        child: Center(
-          child: Text(
-            label,
-            style: TextStyle(
-              color: isPressed ? Colors.white : Colors.white70,
-              fontWeight: FontWeight.w600,
-              fontSize: 14,
+          boxShadow: [
+            BoxShadow(
+              color: isPressed
+                  ? const Color(0xFF6366F1).withOpacity(0.5)
+                  : Colors.black.withOpacity(0.4),
+              blurRadius: isPressed ? 16 : 6,
+              spreadRadius: isPressed ? 2 : 0,
+              offset: Offset(0, isPressed ? 0 : 3),
             ),
-          ),
+          ],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.swap_vert,
+                size: 12,
+                color: isPressed ? Colors.white : Colors.white38),
+            Text(
+              label,
+              style: TextStyle(
+                color: isPressed ? Colors.white : Colors.white70,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+            ),
+          ],
         ),
       ),
     );
