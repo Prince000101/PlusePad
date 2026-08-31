@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 class AnalogStick extends StatefulWidget {
   final Function(double x, double y) onChanged;
@@ -22,7 +23,7 @@ class _AnalogStickState extends State<AnalogStick> {
   void _handlePanUpdate(DragUpdateDetails details, BoxConstraints constraints) {
     final center = Offset(widget.size / 2, widget.size / 2);
     final maxRadius = widget.size / 2 - _stickRadius - 10;
-    
+
     final rawPosition = details.localPosition - center;
     final magnitude = rawPosition.distance;
     final normalizedMagnitude = magnitude / maxRadius;
@@ -37,7 +38,7 @@ class _AnalogStickState extends State<AnalogStick> {
     }
 
     final clampedMagnitude = normalizedMagnitude.clamp(0.0, 1.0);
-    
+
     if (clampedMagnitude < _deadZone) {
       x = 0;
       y = 0;
@@ -62,67 +63,99 @@ class _AnalogStickState extends State<AnalogStick> {
     widget.onChanged(0, 0);
   }
 
+  bool get _active => _position != Offset.zero;
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: widget.size,
       height: widget.size,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return GestureDetector(
-            onPanUpdate: (d) => _handlePanUpdate(d, constraints),
-            onPanEnd: _handlePanEnd,
-            child: Container(
-              width: widget.size,
-              height: widget.size,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF1E293B),
-                border: Border.all(
-                  color: const Color(0xFF334155),
-                  width: 3,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
-                    blurRadius: 10,
-                    spreadRadius: 2,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Center(
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 30),
-                  width: _stickRadius * 2,
-                  height: _stickRadius * 2,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const RadialGradient(
-                      colors: [
-                        Color(0xFF818CF8),
-                        Color(0xFF6366F1),
-                      ],
-                      center: Alignment(-0.3, -0.3),
-                    ),
-                    border: Border.all(
-                      color: const Color(0xFF818CF8),
-                      width: 2,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF6366F1).withOpacity(0.5),
-                        blurRadius: _position == Offset.zero ? 8 : 20,
-                        spreadRadius: _position == Offset.zero ? 1 : 3,
-                      ),
-                    ],
-                  ),
-                  transform: Matrix4.translationValues(_position.dx, _position.dy, 0),
-                ),
-              ),
+      child: GestureDetector(
+        onPanUpdate: (d) => _handlePanUpdate(d, BoxConstraints.tight(Size(widget.size, widget.size))),
+        onPanEnd: _handlePanEnd,
+        child: Container(
+          width: widget.size,
+          height: widget.size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const RadialGradient(
+              colors: [Color(0xFF10162B), Color(0xFF0A0F20)],
+              center: Alignment(-0.2, -0.2),
             ),
-          );
-        },
+            border: Border.all(color: AppTheme.hairline, width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.55),
+                blurRadius: 14,
+                spreadRadius: 2,
+                offset: const Offset(0, 5),
+              ),
+              BoxShadow(
+                color: AppTheme.accentA.withOpacity(_active ? 0.35 : 0.10),
+                blurRadius: _active ? 22 : 10,
+                spreadRadius: _active ? 2 : 0,
+              ),
+            ],
+          ),
+          child: Center(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 30),
+                width: _stickRadius * 2,
+                height: _stickRadius * 2,
+                transform: Matrix4.translationValues(_position.dx, _position.dy, 0),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      Color.lerp(AppTheme.accentB, Colors.white, 0.18)!,
+                      AppTheme.accentB,
+                      AppTheme.accentA,
+                    ],
+                    stops: const [0.0, 0.55, 1.0],
+                  ),
+                  border: Border.all(color: Colors.white.withOpacity(0.25), width: 1.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.accentA.withOpacity(_active ? 0.7 : 0.45),
+                      blurRadius: _active ? 22 : 12,
+                      spreadRadius: _active ? 3 : 1,
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.4),
+                      blurRadius: 5,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // soft inner gloss highlight
+                    Positioned(
+                      top: 5,
+                      child: Container(
+                        width: _stickRadius - 4,
+                        height: _stickRadius - 8,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.white24, Colors.transparent],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      Icons.gps_fixed,
+                      size: _stickRadius * 0.6,
+                      color: Colors.white.withOpacity(0.9),
+                    ),
+                  ],
+                ),
+              ),
+          ),
+        ),
       ),
     );
   }

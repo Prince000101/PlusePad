@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'services/connection_manager.dart';
 import 'screens/connection_screen.dart';
+import 'theme/app_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,12 +34,18 @@ class PulsePadApp extends StatelessWidget {
           brightness: Brightness.dark,
           scaffoldBackgroundColor: const Color(0xFF0F172A),
           colorScheme: const ColorScheme.dark(
-            primary: Color(0xFF6366F1),
-            secondary: Color(0xFF818CF8),
+            primary: AppTheme.accentA,
+            secondary: AppTheme.accentB,
             surface: Color(0xFF1E293B),
-            error: Color(0xFFEF4444),
+            error: AppTheme.red,
           ),
           fontFamily: 'Roboto',
+          splashFactory: InkRipple.splashFactory,
+          appBarTheme: const AppBarTheme(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            foregroundColor: Colors.white,
+          ),
         ),
         home: const ConnectionScreen(),
       ),

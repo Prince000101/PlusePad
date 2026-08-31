@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 /// A classic cross-shaped D-pad. Four digital directions; callbacks report
 /// press/release so the caller can toggle the corresponding DPAD_* flags.
@@ -37,10 +38,11 @@ class _DPadState extends State<DPad> {
   @override
   Widget build(BuildContext context) {
     final arm = widget.size / 3;
+    final pressingAny = _pressed.isNotEmpty;
 
     Widget hitZone(String dir) {
       final isActive = _pressed.contains(dir);
-      final iconColor = isActive ? const Color(0xFF818CF8) : Colors.white60;
+      final iconColor = isActive ? Colors.white : Colors.white54;
       final icon = _dirs.firstWhere((d) => d.$1 == dir).$2;
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -50,7 +52,6 @@ class _DPadState extends State<DPad> {
         child: Container(
           width: arm,
           height: arm,
-          color: Colors.transparent,
           alignment: Alignment.center,
           child: Container(
             width: arm * 0.72,
@@ -58,8 +59,9 @@ class _DPadState extends State<DPad> {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: isActive
-                  ? const Color(0xFF6366F1).withOpacity(0.30)
-                  : Colors.white.withOpacity(0.03),
+                  ? AppTheme.accentA.withOpacity(0.5)
+                  : Colors.transparent,
+              boxShadow: isActive ? AppTheme.glow(AppTheme.accentB, opacity: 0.6, blur: 14) : null,
             ),
             alignment: Alignment.center,
             child: Icon(icon, size: arm * 0.5, color: iconColor),
@@ -72,18 +74,18 @@ class _DPadState extends State<DPad> {
       width: widget.size,
       height: widget.size,
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
+        color: const Color(0xFF0A0F20),
         shape: BoxShape.circle,
-        border: Border.all(color: const Color(0xFF334155), width: 2),
+        border: Border.all(color: AppTheme.hairline, width: 1.5),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.4),
-              blurRadius: 12,
-              offset: const Offset(0, 4)),
+              color: Colors.black.withOpacity(0.55),
+              blurRadius: 14,
+              offset: const Offset(0, 5)),
           BoxShadow(
-              color: const Color(0xFF6366F1).withOpacity(0.15),
-              blurRadius: 18,
-              offset: const Offset(0, 6)),
+              color: AppTheme.accentA.withOpacity(pressingAny ? 0.45 : 0.12),
+              blurRadius: pressingAny ? 24 : 14,
+              spreadRadius: pressingAny ? 3 : 0),
         ],
       ),
       child: Stack(
@@ -91,25 +93,29 @@ class _DPadState extends State<DPad> {
           Center(
             child: CustomPaint(
               size: Size(widget.size, widget.size),
-              painter: _CrossPainter(armWidth: arm, color: const Color(0xFF334155),
-                  active: const Color(0xFF6366F1), pressed: _pressed),
+              painter: _CrossPainter(
+                armWidth: arm * 1.05,
+                baseColor: const Color(0xFF1A2337),
+                litColor: AppTheme.accentB,
+                pressed: _pressed,
+              ),
             ),
           ),
-          Positioned(left: arm, top: 0,
-              child: hitZone('DPAD_UP')),
-          Positioned(left: arm, bottom: 0,
-              child: hitZone('DPAD_DOWN')),
-          Positioned(left: 0, top: arm,
-              child: hitZone('DPAD_LEFT')),
-          Positioned(right: 0, top: arm,
-              child: hitZone('DPAD_RIGHT')),
+          Positioned(left: arm, top: 0, child: hitZone('DPAD_UP')),
+          Positioned(left: arm, bottom: 0, child: hitZone('DPAD_DOWN')),
+          Positioned(left: 0, top: arm, child: hitZone('DPAD_LEFT')),
+          Positioned(right: 0, top: arm, child: hitZone('DPAD_RIGHT')),
           Center(
             child: Container(
-              width: arm * 0.5, height: arm * 0.5,
+              width: arm * 0.5,
+              height: arm * 0.5,
               decoration: BoxDecoration(
-                color: const Color(0xFF273449),
+                color: const Color(0xFF1A2337),
                 shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFF475569), width: 1),
+                border: Border.all(color: AppTheme.accentA.withOpacity(0.6), width: 1.2),
+                boxShadow: pressingAny
+                    ? AppTheme.glow(AppTheme.accentB, opacity: 0.5, blur: 12)
+                    : null,
               ),
             ),
           ),
@@ -121,37 +127,60 @@ class _DPadState extends State<DPad> {
 
 class _CrossPainter extends CustomPainter {
   final double armWidth;
-  final Color color;
-  final Color active;
+  final Color baseColor;
+  final Color litColor;
   final Set<String> pressed;
 
-  _CrossPainter(
-      {required this.armWidth,
-      required this.color,
-      required this.active,
-      required this.pressed});
+  _CrossPainter({
+    required this.armWidth,
+    required this.baseColor,
+    required this.litColor,
+    required this.pressed,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     final c = size.width / 2;
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-    const r = Radius.circular(6);
+    const edgeInset = 3.0;
 
     // Vertical arm
-    canvas.drawRRect(
-        RRect.fromRectAndRadius(
-            Rect.fromLTWH(c - armWidth / 2, 0, armWidth, size.height), r),
-        paint);
+    Rect vRect =
+        Rect.fromLTWH(c - armWidth / 2, edgeInset, armWidth, size.height - edgeInset * 2);
     // Horizontal arm
-    canvas.drawRRect(
-        RRect.fromRectAndRadius(
-            Rect.fromLTWH(0, c - armWidth / 2, size.width, armWidth), r),
-        paint);
+    Rect hRect =
+        Rect.fromLTWH(edgeInset, c - armWidth / 2, size.width - edgeInset * 2, armWidth);
+
+    bool vActive = pressed.contains('DPAD_UP') || pressed.contains('DPAD_DOWN');
+    bool hActive = pressed.contains('DPAD_LEFT') || pressed.contains('DPAD_RIGHT');
+
+    _drawArm(canvas, vRect, vActive);
+    _drawArm(canvas, hRect, hActive);
+  }
+
+  void _drawArm(Canvas canvas, Rect rect, bool active) {
+    final paint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: active
+            ? [litColor, Color.lerp(litColor, Colors.white, 0.2)!]
+            : [const Color(0xFF242F47), baseColor],
+      ).createShader(rect)
+      ..style = PaintingStyle.fill;
+
+    // beveled arm with rounded ends
+    canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(7)), paint);
+
+    // top gloss
+    final gloss = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Colors.white12, Colors.transparent],
+      ).createShader(rect);
+    canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(7)), gloss);
   }
 
   @override
-  bool shouldRepaint(covariant _CrossPainter old) =>
-      old.pressed != pressed || old.color != color;
+  bool shouldRepaint(covariant _CrossPainter old) => old.pressed != pressed;
 }

@@ -54,50 +54,78 @@ class _ActionButtonsState extends State<ActionButtons> {
 
   Widget _btn(String label, Color color) {
     final isPressed = _pressed.contains(label);
-    final light = Color.lerp(color, Colors.white, 0.35)!;
+    final light = Color.lerp(color, Colors.white, 0.40)!;
     return GestureDetector(
       onTapDown: (_) => _down(label),
       onTapUp: (_) => _up(label),
       onTapCancel: () => _up(label),
-      child: AnimatedContainer(
+      child: AnimatedScale(
+        scale: isPressed ? 0.88 : 1.0,
         duration: const Duration(milliseconds: 60),
-        width: 56,
-        height: 56,
-        transform: Matrix4.translationValues(0, isPressed ? 3 : 0, 0),
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: isPressed
-                ? [light, color]
-                : [Colors.white.withOpacity(0.10), color.withOpacity(0.85)],
+        curve: Curves.easeOut,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 60),
+          width: 58,
+          height: 58,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: isPressed
+                  ? [light, color]
+                  : [light.withOpacity(0.55), color],
+            ),
+            border: Border.all(
+                color: isPressed ? Colors.white70 : light.withOpacity(0.6),
+                width: 2),
+            boxShadow: [
+              // ambient colored glow
+              BoxShadow(
+                color: color.withOpacity(isPressed ? 0.8 : 0.4),
+                blurRadius: isPressed ? 26 : 12,
+                spreadRadius: isPressed ? 5 : 1,
+                offset: isPressed ? Offset.zero : const Offset(0, 5),
+              ),
+              // contact shadow
+              BoxShadow(
+                color: Colors.black.withOpacity(0.45),
+                blurRadius: 6,
+                offset: Offset(0, isPressed ? 1 : 4),
+              ),
+            ],
           ),
-          border: Border.all(
-              color: isPressed ? light : color.withOpacity(0.9), width: 2),
-          boxShadow: [
-            BoxShadow(
-              color: color.withOpacity(isPressed ? 0.7 : 0.4),
-              blurRadius: isPressed ? 22 : 10,
-              spreadRadius: isPressed ? 4 : 1,
-              offset: isPressed ? Offset.zero : const Offset(0, 4),
-            ),
-            BoxShadow(
-              color: Colors.black.withOpacity(0.35),
-              blurRadius: 6,
-              offset: Offset(0, isPressed ? 0 : 3),
-            ),
-          ],
-        ),
-        child: Center(
-          child: Text(
-            label,
-            style: TextStyle(
-              color: isPressed ? Colors.white : Colors.white.withOpacity(0.95),
-              fontWeight: FontWeight.w800,
-              fontSize: 20,
-              shadows: const [Shadow(blurRadius: 4, color: Colors.black45)],
-            ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // glossy highlight on top half
+              Positioned(
+                top: 5,
+                child: Container(
+                  width: 44,
+                  height: 26,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.white38, Colors.transparent],
+                    ),
+                  ),
+                ),
+              ),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 20,
+                  height: 1,
+                  shadows: [Shadow(blurRadius: 3, color: Colors.black54)],
+                ),
+              ),
+            ],
           ),
         ),
       ),

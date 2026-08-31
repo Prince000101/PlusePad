@@ -5,6 +5,7 @@ import 'package:vibration/vibration.dart';
 
 import '../models/packet.dart';
 import '../services/connection_manager.dart';
+import '../theme/app_theme.dart';
 import '../widgets/analog_stick.dart';
 import '../widgets/action_buttons.dart';
 import '../widgets/shoulder_buttons.dart';
@@ -74,10 +75,12 @@ class _ControllerScreenState extends State<ControllerScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
-      body: SafeArea(
-        child: _isLandscape
-            ? _buildLandscapeLayout()
-            : _buildPortraitLayout(),
+      body: Background(
+        child: SafeArea(
+          child: _isLandscape
+              ? _buildLandscapeLayout()
+              : _buildPortraitLayout(),
+        ),
       ),
     );
   }
@@ -167,13 +170,24 @@ class _ControllerScreenState extends State<ControllerScreen>
 
   Widget _buildHeader() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: const BoxDecoration(
-        color: Color(0xFF1E293B),
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(20),
-          bottomRight: Radius.circular(20),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.white.withOpacity(0.08),
+            Colors.white.withOpacity(0.03),
+          ],
         ),
+        border: const Border(bottom: BorderSide(color: AppTheme.hairline)),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.accentA.withOpacity(0.06),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Row(
         children: [
@@ -187,8 +201,10 @@ class _ControllerScreenState extends State<ControllerScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: const Color(0xFF22C55E).withOpacity(0.2),
+              color: const Color(0xFF22C55E).withOpacity(0.15),
               borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                  color: const Color(0xFF22C55E).withOpacity(0.4), width: 1),
             ),
             child: Consumer<ConnectionManager>(
               builder: (context, manager, _) => Row(
@@ -211,13 +227,24 @@ class _ControllerScreenState extends State<ControllerScreen>
             builder: (context, manager, _) => Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: _getLatencyColor(manager.latency).withOpacity(0.2),
+                color: _getLatencyColor(manager.latency).withOpacity(0.15),
                 borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                    color: _getLatencyColor(manager.latency).withOpacity(0.4),
+                    width: 1),
               ),
-              child: Text('${manager.latency}ms',
-                  style: TextStyle(
-                      fontSize: 12, color: _getLatencyColor(manager.latency),
-                      fontWeight: FontWeight.bold)),
+              child: Row(
+                children: [
+                  Icon(Icons.speed, size: 14,
+                      color: _getLatencyColor(manager.latency)),
+                  const SizedBox(width: 6),
+                  Text('${manager.latency}ms',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: _getLatencyColor(manager.latency),
+                          fontWeight: FontWeight.bold)),
+                ],
+              ),
             ),
           ),
         ],
@@ -405,11 +432,7 @@ class _ControllerScreenState extends State<ControllerScreen>
                 // pad for future expansion but no-op for now.
               },
               child: Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E293B),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFF334155)),
-                ),
+                decoration: AppTheme.glass(radius: 24),
                 child: const Center(
                   child: Text('Touchpad Area',
                       style: TextStyle(color: Colors.white54)),
@@ -449,11 +472,7 @@ class _ControllerScreenState extends State<ControllerScreen>
       onTapUp: (_) => _setButton(key, false),
       child: Container(
         width: 70, height: 70,
-        decoration: BoxDecoration(
-          color: const Color(0xFF1E293B),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF334155)),
-        ),
+        decoration: AppTheme.glass(radius: 14),
         child: Center(
           child: Text(key,
               style: const TextStyle(
@@ -469,19 +488,9 @@ class _ControllerScreenState extends State<ControllerScreen>
       onTapUp: (_) => _setButton(label, false),
       onTapCancel: () => _setButton(label, false),
       child: Container(
-        width: 60,
-        height: 34,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(17),
-          color: const Color(0xFF1E293B),
-          border: Border.all(color: const Color(0xFF475569), width: 1.2),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.3),
-                blurRadius: 5,
-                offset: const Offset(0, 2)),
-          ],
-        ),
+        width: 62,
+        height: 36,
+        decoration: AppTheme.glass(radius: 18),
         alignment: Alignment.center,
         child: Text(label,
             style: const TextStyle(
@@ -495,9 +504,21 @@ class _ControllerScreenState extends State<ControllerScreen>
 
   Widget _buildBottomBar() {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.white.withOpacity(0.06),
+            Colors.white.withOpacity(0.02),
+          ],
+        ),
+        border: const Border(top: BorderSide(color: AppTheme.hairline)),
+      ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
@@ -551,32 +572,24 @@ class _ControllerScreenState extends State<ControllerScreen>
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: isActive
-              ? const Color(0xFF6366F1).withOpacity(0.2)
-              : const Color(0xFF1E293B),
-          borderRadius: BorderRadius.circular(12),
+              ? AppTheme.accentA.withOpacity(0.22)
+              : Colors.white.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
-              color: isActive ? const Color(0xFF6366F1) : Colors.transparent,
-              width: 1.5),
-          boxShadow: isActive
-              ? [
-                  BoxShadow(
-                      color: const Color(0xFF6366F1).withOpacity(0.3),
-                      blurRadius: 10, spreadRadius: 1),
-                ]
-              : null,
+              color: isActive ? AppTheme.accentB : AppTheme.hairline,
+              width: 1.2),
+          boxShadow: isActive ? AppTheme.glow(AppTheme.accentA, opacity: 0.45) : null,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 22,
-                color: isActive ? const Color(0xFF6366F1) : Colors.white54),
+                color: isActive ? AppTheme.accentB : Colors.white54),
             const SizedBox(height: 4),
             Text(label,
                 style: TextStyle(
                     fontSize: 10,
-                    color: isActive
-                        ? const Color(0xFF6366F1)
-                        : Colors.white54,
+                    color: isActive ? AppTheme.accentB : Colors.white54,
                     fontWeight: FontWeight.w500)),
           ],
         ),

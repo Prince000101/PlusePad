@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../models/packet.dart';
 import '../services/connection_manager.dart';
+import '../theme/app_theme.dart';
 
 /// Full-screen QR scanner. Scans the QR code shown by the PC Control Center,
 /// decodes the `pulsepad|...` payload and auto-fills the connection settings.
@@ -83,9 +84,10 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
               height: 250,
               decoration: BoxDecoration(
                 border: Border.all(
-                    color: const Color(0xFF22C55E).withOpacity(0.6),
-                    width: 2),
-                borderRadius: BorderRadius.circular(16),
+                    color: AppTheme.accentB.withOpacity(0.7),
+                    width: 2.5),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: AppTheme.glow(AppTheme.accentA, opacity: 0.3, blur: 24),
               ),
             ),
           ),

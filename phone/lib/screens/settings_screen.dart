@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../theme/app_theme.dart';
 import '../models/packet.dart';
 import '../services/connection_manager.dart';
 
@@ -13,12 +14,14 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
+    return Background(
+      child: Scaffold(
         backgroundColor: Colors.transparent,
-        title: const Text('Settings'),
-      ),
-      body: Consumer<ConnectionManager>(
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          title: const Text('Settings'),
+        ),
+        body: Consumer<ConnectionManager>(
         builder: (context, manager, _) => ListView(
           padding: const EdgeInsets.all(16),
           children: [
@@ -58,6 +61,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
       ),
+      ),
     );
   }
 
@@ -70,15 +74,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           style: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
-            color: Color(0xFF6366F1),
+            color: AppTheme.accentB,
           ),
         ),
         const SizedBox(height: 12),
         Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E293B),
-            borderRadius: BorderRadius.circular(12),
-          ),
+          decoration: AppTheme.glass(radius: 16, blur: 14),
           child: Column(children: children),
         ),
       ],
@@ -101,7 +102,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         min: min,
         max: max,
         onChanged: onChanged,
-        activeColor: const Color(0xFF6366F1),
+        activeColor: AppTheme.accentA,
       ),
     );
   }

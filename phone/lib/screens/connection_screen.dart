@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/connection_manager.dart';
+import '../theme/app_theme.dart';
 import 'controller_screen.dart';
 import 'settings_screen.dart';
 import 'qr_scanner_screen.dart';
@@ -43,33 +44,35 @@ class _ConnectionScreenState extends State<ConnectionScreen> with SingleTickerPr
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: constraints.maxHeight,
-                ),
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(24, 40, 24, 24 + MediaQuery.of(context).viewInsets.bottom),
-                  child: Column(
-                    children: [
-                      _buildLogo(),
-                      const SizedBox(height: 40),
-                      _buildConnectionOptions(),
-                      const SizedBox(height: 32),
-                      _buildConnectButton(),
-                      const SizedBox(height: 16),
-                      _buildStatus(),
-                      const SizedBox(height: 32),
-                      _buildFooter(),
-                    ],
+      body: Background(
+        child: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: constraints.maxHeight,
+                  ),
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(24, 40, 24, 24 + MediaQuery.of(context).viewInsets.bottom),
+                    child: Column(
+                      children: [
+                        _buildLogo(),
+                        const SizedBox(height: 40),
+                        _buildConnectionOptions(),
+                        const SizedBox(height: 32),
+                        _buildConnectButton(),
+                        const SizedBox(height: 16),
+                        _buildStatus(),
+                        const SizedBox(height: 32),
+                        _buildFooter(),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         ),
       ),
     );
@@ -85,7 +88,17 @@ class _ConnectionScreenState extends State<ConnectionScreen> with SingleTickerPr
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFF6366F1).withOpacity(0.15),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    AppTheme.accentB.withOpacity(0.25),
+                    AppTheme.accentA.withOpacity(0.08),
+                  ],
+                ),
+                border: Border.all(
+                    color: AppTheme.accentB.withOpacity(_pulseAnimation.value),
+                    width: 2),
                 boxShadow: [
                   BoxShadow(
                     color: const Color(0xFF6366F1).withOpacity(0.3 * _pulseAnimation.value),
@@ -97,7 +110,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> with SingleTickerPr
               child: const Icon(
                 Icons.gamepad,
                 size: 70,
-                color: Color(0xFF6366F1),
+                color: AppTheme.accentB,
               ),
             );
           },
@@ -175,36 +188,37 @@ class _ConnectionScreenState extends State<ConnectionScreen> with SingleTickerPr
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF6366F1).withOpacity(0.15) : const Color(0xFF1E293B),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? const Color(0xFF6366F1) : Colors.transparent,
-            width: 2,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: const Color(0xFF6366F1).withOpacity(0.2),
-                    blurRadius: 15,
-                    spreadRadius: 1,
-                  ),
-                ]
-              : null,
-        ),
+        decoration: isSelected
+            ? BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    AppTheme.accentA.withOpacity(0.30),
+                    AppTheme.accentA.withOpacity(0.12),
+                  ],
+                ),
+                border: Border.all(color: AppTheme.accentB, width: 1.5),
+                boxShadow: AppTheme.glow(AppTheme.accentA, opacity: 0.35),
+              )
+            : AppTheme.glass(radius: 16),
         child: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: isSelected
-                    ? const Color(0xFF6366F1).withOpacity(0.2)
-                    : Colors.white.withOpacity(0.05),
+                    ? AppTheme.accentA.withOpacity(0.30)
+                    : Colors.white.withOpacity(0.06),
                 borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                    color: isSelected ? AppTheme.accentB : AppTheme.hairline,
+                    width: 1),
               ),
               child: Icon(
                 icon,
-                color: isSelected ? const Color(0xFF6366F1) : Colors.white54,
+                color: isSelected ? AppTheme.accentB : Colors.white54,
                 size: 24,
               ),
             ),
@@ -238,11 +252,14 @@ class _ConnectionScreenState extends State<ConnectionScreen> with SingleTickerPr
               height: 24,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: isSelected ? const Color(0xFF6366F1) : Colors.transparent,
+                color: isSelected ? AppTheme.accentA : Colors.transparent,
                 border: Border.all(
-                  color: isSelected ? const Color(0xFF6366F1) : Colors.white30,
+                  color: isSelected ? AppTheme.accentB : Colors.white30,
                   width: 2,
                 ),
+                boxShadow: isSelected
+                    ? AppTheme.glow(AppTheme.accentA, opacity: 0.6, blur: 8)
+                    : null,
               ),
               child: isSelected
                   ? const Icon(Icons.check, size: 14, color: Colors.white)
@@ -269,10 +286,19 @@ class _ConnectionScreenState extends State<ConnectionScreen> with SingleTickerPr
                       hintText: '192.168.1.100',
                       hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
                       filled: true,
-                      fillColor: const Color(0xFF1E293B),
+                      fillColor: Colors.white.withOpacity(0.05),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 16),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+                        borderSide: const BorderSide(color: AppTheme.hairline),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: AppTheme.hairline),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: AppTheme.accentA, width: 1.5),
                       ),
                       prefixIcon: const Icon(Icons.router, color: Colors.white54),
                     ),
@@ -285,8 +311,9 @@ class _ConnectionScreenState extends State<ConnectionScreen> with SingleTickerPr
                 const SizedBox(width: 10),
                 Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFF6366F1),
+                    gradient: AppTheme.accentGradient,
                     borderRadius: BorderRadius.circular(16),
+                    boxShadow: AppTheme.glow(AppTheme.accentA, opacity: 0.4),
                   ),
                   child: IconButton(
                     tooltip: 'Find PC automatically',
@@ -306,10 +333,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> with SingleTickerPr
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E293B),
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                decoration: AppTheme.glass(radius: 14, blur: 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -376,41 +400,55 @@ class _ConnectionScreenState extends State<ConnectionScreen> with SingleTickerPr
         return SizedBox(
           width: double.infinity,
           height: 56,
-          child: ElevatedButton(
-            onPressed: isConnecting ? null : () => _handleConnect(context, manager),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF6366F1),
-              disabledBackgroundColor: const Color(0xFF4F46E5).withOpacity(0.5),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: isConnecting
+                  ? const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0x668F98F9), Color(0x666366F1)])
+                  : AppTheme.accentGradient,
+              boxShadow: AppTheme.glow(AppTheme.accentA, opacity: 0.5),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (isConnecting) ...[
-                  const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation(Colors.white),
+            child: ElevatedButton(
+              onPressed: isConnecting ? null : () => _handleConnect(context, manager),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                disabledBackgroundColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (isConnecting) ...[
+                    const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation(Colors.white),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                  ] else ...[
+                    const Icon(Icons.power, color: Colors.white),
+                    const SizedBox(width: 8),
+                  ],
+                  Text(
+                    isConnecting ? 'CONNECTING...' : 'CONNECT',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                ] else ...[
-                  const Icon(Icons.power, color: Colors.white),
-                  const SizedBox(width: 8),
                 ],
-                Text(
-                  isConnecting ? 'CONNECTING...' : 'CONNECT',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         );
