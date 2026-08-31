@@ -5,13 +5,19 @@ import 'package:vibration/vibration.dart';
 
 import '../models/packet.dart';
 import '../services/connection_manager.dart';
+import '../models/control_slot.dart';
+import '../services/layout_store.dart';
 import '../theme/app_theme.dart';
 import '../widgets/analog_stick.dart';
 import '../widgets/action_buttons.dart';
-import '../widgets/shoulder_buttons.dart';
 import '../widgets/dpad.dart';
+import 'layout_editor_screen.dart';
 import 'settings_screen.dart';
 
+/// Full-screen controller designed for a phone held LANDSCAPE (like a Steam
+/// Deck / Steam Controller). It auto-rotates to landscape on entry, runs
+/// full-bleed (maximised controls, no task/status bar) and hides all chrome
+/// behind a single small floating menu button.
 class ControllerScreen extends StatefulWidget {
   const ControllerScreen({super.key});
 
@@ -22,12 +28,15 @@ class ControllerScreen extends StatefulWidget {
 class _ControllerScreenState extends State<ControllerScreen>
     with TickerProviderStateMixin {
   ControllerLayout _currentLayout = ControllerLayout.gamepad;
-  bool _isLandscape = false;
   bool _dpadMode = false;
+  bool _menuOpen = false;
 
   @override
   void initState() {
     super.initState();
+    // Landscape-first: lock to horizontal and go immersive (no status/nav bar).
+    SystemChrome.setPreferredOrientations(
+        [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ConnectionManager>().enableAutoReconnect();
@@ -46,6 +55,7 @@ class _ControllerScreenState extends State<ControllerScreen>
   @override
   void dispose() {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     super.dispose();
   }
 
@@ -59,39 +69,46 @@ class _ControllerScreenState extends State<ControllerScreen>
 
   void _setAxis(String name, double v) {
     final cm = _cm();
-    // Apply sensitivity to the analog value before scaling.
     v = (v * cm.sensitivity).clamp(-1.0, 1.0);
     if (cm.controller.setAxis(name, v)) cm.pushState();
   }
 
-  void _toggleLandscape() {
-    setState(() => _isLandscape = !_isLandscape);
-    SystemChrome.setPreferredOrientations(_isLandscape
-        ? [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]
-        : [DeviceOrientation.portraitUp]);
+  void _dpad(String dir, bool pressed) => _setButton(dir, pressed);
+
+  void _exit() {
+    context.read<ConnectionManager>().disconnect();
+    Navigator.pop(context);
   }
 
+  // ------------------------------- build ------------------------------- //
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       body: Background(
-        child: SafeArea(
-          child: _isLandscape
-              ? _buildLandscapeLayout()
-              : _buildPortraitLayout(),
+        // Full-bleed: no SafeArea so the controls fill the whole screen.
+        child: Stack(
+          children: [
+            SizedBox.expand(child: _buildCurrentLayout()),
+            // Overlay: menu button + latency.
+            Positioned(
+              top: 8,
+              child: SizedBox(
+                width: MediaQuery.of(context).size.width,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _buildMenuButton(),
+                    const SizedBox(width: 8),
+                    _buildLatencyPill(),
+                  ],
+                ),
+              ),
+            ),
+            if (_menuOpen) Positioned.fill(child: _buildMenuOverlay()),
+          ],
         ),
       ),
-    );
-  }
-
-  Widget _buildPortraitLayout() {
-    return Column(
-      children: [
-        _buildHeader(),
-        Expanded(child: _buildCurrentLayout()),
-        _buildBottomBar(),
-      ],
     );
   }
 
@@ -105,52 +122,83 @@ class _ControllerScreenState extends State<ControllerScreen>
         return _buildMouseLayout();
       case ControllerLayout.keyboard:
         return _buildKeyboardLayout();
+      case ControllerLayout.simple:
+        return _buildSimpleLayout();
+      case ControllerLayout.pro:
+        return _buildProLayout();
+      case ControllerLayout.custom:
+        return _buildCustomLayout();
       case ControllerLayout.gamepad:
       default:
-        return _buildGamepadLayout();
+        return _buildSteamDeckLayout();
     }
   }
 
-  Widget _buildLandscapeLayout() {
-    return Row(
+  // ---------------- Steam Deck-inspired landscape gamepad ---------------- //
+  // Left grip: D-pad (top) + left stick (below). Right grip: ABXY (top) +
+  // right stick (below). Symmetric like the Steam Deck, full-bleed.
+  Widget _buildSteamDeckLayout() {
+    // Half the width for each grip; controls sized to available space.
+    final media = MediaQuery.of(context).size;
+    final topControl = (media.height * 0.44).clamp(90.0, 220.0);
+    final bottomControl = (media.height * 0.38).clamp(80.0, 190.0);
+
+    return Stack(
       children: [
-        Container(
-          width: 210,
-          padding: const EdgeInsets.all(12),
-          child: Column(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 88, 8, 8),
+          child: Row(
             children: [
-              _dpadMode ? DPad(onChanged: _dpad, size: 120)
+              // ---- Left grip ----
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _dpadMode
+                        ? DPad(onChanged: _dpad, size: topControl)
                         : AnalogStick(
-                            size: 130,
+                            size: topControl,
                             onChanged: (x, y) {
                               _setAxis('LX', x);
                               _setAxis('LY', y);
                             }),
-              const Spacer(),
-              ShoulderButtons(
-                onPressed: (b) => _setButton(b, true),
-                onReleased: (b) => _setButton(b, false),
-                horizontal: true,
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    ActionButtons(
-                      onPressed: (b) => _setButton(b, true),
-                      onReleased: (b) => _setButton(b, false),
-                    ),
-                    _buildVerticalCenterButtons(),
+                    const Spacer(),
                     AnalogStick(
-                      size: 110,
+                      size: bottomControl,
+                      onChanged: (x, y) {
+                        _setAxis('LX', x);
+                        _setAxis('LY', y);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              // ---- Center controls ----
+              SizedBox(
+                width: 56,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _pill('SELECT'),
+                    const SizedBox(height: 14),
+                    _pill('START'),
+                  ],
+                ),
+              ),
+              // ---- Right grip ----
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Center(
+                      child: ActionButtons(
+                        onPressed: (b) => _setButton(b, true),
+                        onReleased: (b) => _setButton(b, false),
+                      ),
+                    ),
+                    const Spacer(),
+                    AnalogStick(
+                      size: bottomControl,
                       onChanged: (x, y) {
                         _setAxis('RX', x);
                         _setAxis('RY', y);
@@ -158,279 +206,497 @@ class _ControllerScreenState extends State<ControllerScreen>
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  void _dpad(String dir, bool pressed) => _setButton(dir, pressed);
-
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.white.withOpacity(0.08),
-            Colors.white.withOpacity(0.03),
-          ],
-        ),
-        border: const Border(bottom: BorderSide(color: AppTheme.hairline)),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.accentA.withOpacity(0.06),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white70),
-            onPressed: () {
-              context.read<ConnectionManager>().disconnect();
-              Navigator.pop(context);
-            },
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: const Color(0xFF22C55E).withOpacity(0.15),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                  color: const Color(0xFF22C55E).withOpacity(0.4), width: 1),
-            ),
-            child: Consumer<ConnectionManager>(
-              builder: (context, manager, _) => Row(
-                children: [
-                  Icon(manager.mode == ConnectionMode.usb
-                      ? Icons.usb
-                      : Icons.wifi,
-                      size: 14, color: const Color(0xFF22C55E)),
-                  const SizedBox(width: 6),
-                  Text(manager.mode == ConnectionMode.usb ? 'USB' : 'Wi-Fi',
-                      style: const TextStyle(
-                          fontSize: 12, color: Color(0xFF22C55E),
-                          fontWeight: FontWeight.w600)),
-                ],
-              ),
-            ),
-          ),
-          const Spacer(),
-          Consumer<ConnectionManager>(
-            builder: (context, manager, _) => Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: _getLatencyColor(manager.latency).withOpacity(0.15),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                    color: _getLatencyColor(manager.latency).withOpacity(0.4),
-                    width: 1),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.speed, size: 14,
-                      color: _getLatencyColor(manager.latency)),
-                  const SizedBox(width: 6),
-                  Text('${manager.latency}ms',
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: _getLatencyColor(manager.latency),
-                          fontWeight: FontWeight.bold)),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildGamepadLayout() {
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _dpadMode
-                  ? DPad(onChanged: _dpad)
-                  : AnalogStick(
-                      size: 160,
-                      onChanged: (x, y) {
-                        _setAxis('LX', x);
-                        _setAxis('LY', y);
-                      }),
-              AnalogStick(
-                size: 120,
-                onChanged: (x, y) {
-                  _setAxis('RX', x);
-                  _setAxis('RY', y);
-                },
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                _buildVerticalCenterButtons(),
-                ActionButtons(
-                  onPressed: (b) => _setButton(b, true),
-                  onReleased: (b) => _setButton(b, false),
-                ),
-              ],
-            ),
-          ),
-          ShoulderButtons(
-            onPressed: (b) => _setButton(b, true),
-            onReleased: (b) => _setButton(b, false),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildVerticalCenterButtons() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _buildCenterButton('SELECT'),
-        const SizedBox(height: 8),
-        _buildCenterButton('START'),
-        const SizedBox(height: 8),
-        _buildCenterButton('L3'),
-        const SizedBox(height: 8),
-        _buildCenterButton('R3'),
+        ),
+        // Steam-Deck style bumpers sit along the top edge of each grip.
+        Positioned(top: 8, left: 16,
+            child: _cornerBumpers(const ['L1', 'L2'], left: true)),
+        Positioned(top: 8, right: 16,
+            child: _cornerBumpers(const ['R2', 'R1'], left: false)),
       ],
     );
   }
 
-  Widget _buildPSPLayout() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          Expanded(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                DPad(onChanged: _dpad, size: 130),
-                ActionButtons(
-                  onPressed: (b) => _setButton(b, true),
-                  onReleased: (b) => _setButton(b, false),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          _buildVerticalCenterButtonsRow(),
-          const SizedBox(height: 16),
-          AnalogStick(
-            size: 130,
-            onChanged: (x, y) {
-              _setAxis('RX', x);
-              _setAxis('RY', y);
-            },
-          ),
-          const SizedBox(height: 12),
-          ShoulderButtons(
-            onPressed: (b) => _setButton(b, true),
-            onReleased: (b) => _setButton(b, false),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildVerticalCenterButtonsRow() {
+  /// A compact vertical pair of bumpers for one grip corner.
+  Widget _cornerBumpers(List<String> labels, {required bool left}) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      mainAxisSize: MainAxisSize.min,
+      children: labels.map((l) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: GestureDetector(
+            onTapDown: (_) => _setButton(l, true),
+            onTapUp: (_) => _setButton(l, false),
+            onTapCancel: () => _setButton(l, false),
+            child: Container(
+              width: 52,
+              height: 40,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                gradient: const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFF2C3A54), Color(0xFF151C2E)],
+                ),
+                border: Border.all(color: AppTheme.hairline, width: 1.2),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.45),
+                    blurRadius: 6,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              alignment: Alignment.center,
+              child: Text(l,
+                  style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white70)),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _pill(String label) {
+    return GestureDetector(
+      onTapDown: (_) => _setButton(label, true),
+      onTapUp: (_) => _setButton(label, false),
+      onTapCancel: () => _setButton(label, false),
+      child: Container(
+        width: 52,
+        height: 30,
+        alignment: Alignment.center,
+        decoration: AppTheme.glass(radius: 15),
+        child: Text(label,
+            style: const TextStyle(
+                fontSize: 8,
+                color: Colors.white70,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.4)),
+      ),
+    );
+  }
+
+  // ---------------------------- Simple layout -------------------------- //
+  // Big, few controls — best for casual users. Just two sticks, a D-pad and
+  // the face buttons, sized large and placed for easy thumbs.
+  Widget _buildSimpleLayout() {
+    final media = MediaQuery.of(context).size;
+    final big = (media.height * 0.42).clamp(90.0, 200.0);
+    final face = (media.height * 0.3).clamp(70.0, 150.0);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 64, 8, 12),
+      child: Stack(
+        children: [
+          // Left stick (large).
+          Positioned(
+            left: media.width * 0.02,
+            top: 0,
+            child: AnalogStick(
+              size: big,
+              onChanged: (x, y) {
+                _setAxis('LX', x);
+                _setAxis('LY', y);
+              },
+            ),
+          ),
+          // Right side: big ABXY cluster.
+          Positioned(
+            right: media.width * 0.02,
+            top: 0,
+            child: ClipOval(
+              child: SizedBox(
+                width: face + 40,
+                height: face + 40,
+                child: Center(
+                  child: ActionButtons(
+                    onPressed: (b) => _setButton(b, true),
+                    onReleased: (b) => _setButton(b, false),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // D-pad bottom-left.
+          Positioned(
+            left: media.width * 0.08,
+            bottom: 4,
+            child: DPad(onChanged: _dpad, size: media.height * 0.32),
+          ),
+          // Right stick bottom-right.
+          Positioned(
+            right: media.width * 0.06,
+            bottom: 4,
+            child: AnalogStick(
+              size: media.height * 0.36,
+              onChanged: (x, y) {
+                _setAxis('RX', x);
+                _setAxis('RY', y);
+              },
+            ),
+          ),
+          // SELECT / START mini group centre.
+          Positioned(
+            right: media.width * 0.50,
+            bottom: media.height * 0.02,
+            child: Row(
+              children: [
+                _pill('SELECT'),
+                const SizedBox(width: 10),
+                _pill('START'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ------------------------------ Pro layout --------------------------- //
+  // Everything, laid out like a premium pad: two sticks, D-pad, ABXY, L/R1/L2
+  // bumpers and triggers, plus L3/R3 and extra shoulders.
+  Widget _buildProLayout() {
+    final media = MediaQuery.of(context).size;
+    final grip = (media.height * 0.34).clamp(80.0, 165.0);
+
+    return Stack(
       children: [
-        _buildCenterButton('SELECT'),
-        _buildCenterButton('START'),
-        _buildCenterButton('L3'),
-        _buildCenterButton('R3'),
+        // Top bumpers + triggers.
+        Positioned(top: 8, left: 16, child: _cornerBumpers(const ['L1', 'L2'], left: true)),
+        Positioned(top: 8, right: 16, child: _cornerBumpers(const ['R2', 'R1'], left: false)),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 88, 8, 24),
+          child: Row(
+            children: [
+              // Left grip: D-pad (top) + left stick (below).
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _dpadMode
+                        ? DPad(onChanged: _dpad, size: grip)
+                        : AnalogStick(
+                            size: grip,
+                            onChanged: (x, y) {
+                              _setAxis('LX', x);
+                              _setAxis('LY', y);
+                            }),
+                    const Spacer(),
+                    AnalogStick(
+                      size: grip,
+                      onChanged: (x, y) {
+                        _setAxis('LX', x);
+                        _setAxis('LY', y);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              // Centre: SELECT / START + L3 / R3.
+              SizedBox(
+                width: 64,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _pill('L3'),
+                    const SizedBox(height: 10),
+                    _pill('SELECT'),
+                    const SizedBox(height: 10),
+                    _pill('START'),
+                    const SizedBox(height: 10),
+                    _pill('R3'),
+                  ],
+                ),
+              ),
+              // Right grip: face (top) + right stick (below).
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Center(
+                      child: ActionButtons(
+                        onPressed: (b) => _setButton(b, true),
+                        onReleased: (b) => _setButton(b, false),
+                      ),
+                    ),
+                    const Spacer(),
+                    AnalogStick(
+                      size: grip,
+                      onChanged: (x, y) {
+                        _setAxis('RX', x);
+                        _setAxis('RY', y);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildPS5Layout() {
+  // --------------------------- Custom layout --------------------------- //
+  // Renders the user's saved custom layout (from the visual editor). Controls
+  // are positioned/sized by normalised fractions of the screen.
+  Widget _buildCustomLayout() {
+    final layout = context.watch<LayoutStore>().layout;
+    if (layout == null || layout.slots.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.add_circle_outline,
+                size: 48, color: AppTheme.accentB),
+            const SizedBox(height: 12),
+            Text('No custom layout yet',
+                style: TextStyle(color: Colors.white.withOpacity(0.6))),
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: _openEditor,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 18, vertical: 12),
+                decoration: BoxDecoration(
+                  gradient: AppTheme.accentGradient,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: AppTheme.glow(AppTheme.accentA, opacity: 0.4),
+                ),
+                child: const Text('Open Editor',
+                    style: TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w700)),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final h = constraints.maxHeight;
+        return Stack(
+          children: layout.slots.map((s) {
+            return Positioned(
+              left: (s.x - s.w / 2) * w,
+              top: (s.y - s.h / 2) * h,
+              width: s.w * w,
+              height: s.h * h,
+              child: _renderSlot(s),
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+
+  Widget _renderSlot(ControlSlot s) {
+    switch (s.kind) {
+      case 'stick':
+        final isRight = s.action.contains('R') && !s.action.contains('LX');
+        return AnalogStick(
+          size: 100,
+          onChanged: (x, y) {
+            _setAxis(isRight ? 'RX' : 'LX', x);
+            _setAxis(isRight ? 'RY' : 'LY', y);
+          },
+        );
+      case 'dpad':
+        return DPad(onChanged: _dpad);
+      default:
+        final action = s.action.isEmpty ? s.label : s.action;
+        return _customButton(s.label, action);
+    }
+  }
+
+  Widget _customButton(String label, String action) {
+    return GestureDetector(
+      onTapDown: (_) => _setButton(action, true),
+      onTapUp: (_) => _setButton(action, false),
+      onTapCancel: () => _setButton(action, false),
+      child: Container(
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0x337F86FD), Color(0x886366F1)],
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.hairline, width: 1.2),
+          boxShadow: AppTheme.glow(AppTheme.accentA, opacity: 0.25),
+        ),
+        child: Text(label,
+            style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: Colors.white)),
+      ),
+    );
+  }
+
+  void _openEditor() {
+    final store = context.read<LayoutStore>();
+    final existing = store.layout;
+    final working = existing != null
+        ? CustomLayout(name: 'My Custom', slots: existing.slots)
+        : _defaultCustomLayout();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+          builder: (_) => LayoutEditorScreen(layout: working)),
+    );
+    setState(() => _menuOpen = false);
+  }
+
+  CustomLayout _defaultCustomLayout() {
+    return CustomLayout(name: 'My Custom', slots: [
+      ControlSlot(id: 'a', kind: 'button', x: 0.78, y: 0.32, w: 0.10, h: 0.14, label: 'A', action: 'A'),
+      ControlSlot(id: 'b', kind: 'button', x: 0.86, y: 0.50, w: 0.10, h: 0.14, label: 'B', action: 'B'),
+      ControlSlot(id: 'x', kind: 'button', x: 0.86, y: 0.16, w: 0.10, h: 0.14, label: 'X', action: 'X'),
+      ControlSlot(id: 'y', kind: 'button', x: 0.78, y: 0.66, w: 0.10, h: 0.14, label: 'Y', action: 'Y'),
+      ControlSlot(id: 'd', kind: 'dpad', x: 0.16, y: 0.5, w: 0.22, h: 0.45, label: 'D-PAD', action: 'DPAD'),
+      ControlSlot(id: 's', kind: 'stick', x: 0.84, y: 0.78, w: 0.18, h: 0.32, label: 'STICK', action: 'RX/RY'),
+      ControlSlot(id: 'sel', kind: 'button', x: 0.45, y: 0.78, w: 0.10, h: 0.10, label: 'SELECT', action: 'SELECT'),
+      ControlSlot(id: 'sta', kind: 'button', x: 0.55, y: 0.78, w: 0.10, h: 0.10, label: 'START', action: 'START'),
+    ]);
+  }
+
+  // ---------------------------- PSP layout ---------------------------- //
+  Widget _buildPSPLayout() {
+    final media = MediaQuery.of(context).size;
+    final ctrl = (media.height * 0.42).clamp(90.0, 200.0);
     return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
+      padding: const EdgeInsets.fromLTRB(8, 64, 8, 8),
+      child: Row(
         children: [
           Expanded(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                DPad(onChanged: _dpad, size: ctrl),
+                const SizedBox(height: 14),
+                _pill('L3'),
+              ],
+            ),
+          ),
+          SizedBox(
+            width: 56,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _pill('SELECT'),
+                const SizedBox(height: 14),
+                _pill('START'),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ActionButtons(
+                  onPressed: (b) => _setButton(b, true),
+                  onReleased: (b) => _setButton(b, false),
+                ),
+                const SizedBox(height: 14),
+                AnalogStick(
+                  size: (media.height * 0.3).clamp(70.0, 150.0),
+                  onChanged: (x, y) {
+                    _setAxis('RX', x);
+                    _setAxis('RY', y);
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------- PS5 layout ---------------------------- //
+  Widget _buildPS5Layout() {
+    final media = MediaQuery.of(context).size;
+    final ctrl = (media.height * 0.4).clamp(85.0, 190.0);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 64, 8, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 _dpadMode
-                    ? DPad(onChanged: _dpad, size: 120)
+                    ? DPad(onChanged: _dpad, size: ctrl)
                     : AnalogStick(
-                        size: 110,
+                        size: ctrl,
                         onChanged: (x, y) {
                           _setAxis('LX', x);
                           _setAxis('LY', y);
                         }),
-                ActionButtons(
-                  onPressed: (b) => _setButton(b, true),
-                  onReleased: (b) => _setButton(b, false),
+                const SizedBox(height: 14),
+                AnalogStick(
+                  size: ctrl * 0.8,
+                  onChanged: (x, y) {
+                    _setAxis('LX', x);
+                    _setAxis('LY', y);
+                  },
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          _buildVerticalCenterButtonsRow(),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              AnalogStick(
-                size: 110,
-                onChanged: (x, y) {
-                  _setAxis('LX', x);
-                  _setAxis('LY', y);
-                },
-              ),
-              AnalogStick(
-                size: 110,
-                onChanged: (x, y) {
-                  _setAxis('RX', x);
-                  _setAxis('RY', y);
-                },
-              ),
-            ],
+          SizedBox(
+            width: 56,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _pill('SELECT'),
+                const SizedBox(height: 14),
+                _pill('START'),
+              ],
+            ),
           ),
-          const SizedBox(height: 12),
-          ShoulderButtons(
-            onPressed: (b) => _setButton(b, true),
-            onReleased: (b) => _setButton(b, false),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ActionButtons(
+                  onPressed: (b) => _setButton(b, true),
+                  onReleased: (b) => _setButton(b, false),
+                ),
+                const SizedBox(height: 14),
+                AnalogStick(
+                  size: ctrl * 0.8,
+                  onChanged: (x, y) {
+                    _setAxis('RX', x);
+                    _setAxis('RY', y);
+                  },
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
+  // --------------------------- Mouse layout --------------------------- //
   Widget _buildMouseLayout() {
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(8, 64, 8, 24),
       child: Column(
         children: [
           Expanded(
             child: GestureDetector(
-              onPanUpdate: (details) {
-                // Mouse is not yet in the binary protocol scope; keep touch
-                // pad for future expansion but no-op for now.
-              },
+              onPanUpdate: (_) {},
               child: Container(
                 decoration: AppTheme.glass(radius: 24),
                 child: const Center(
@@ -440,12 +706,17 @@ class _ControllerScreenState extends State<ControllerScreen>
               ),
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _buildCenterButton('SELECT'),
-              _buildCenterButton('START'),
+              _pill('SELECT'),
+              const SizedBox(width: 16),
+              _pill('START'),
+              const SizedBox(width: 16),
+              _pill('LMB'),
+              const SizedBox(width: 16),
+              _pill('RMB'),
             ],
           ),
         ],
@@ -453,25 +724,31 @@ class _ControllerScreenState extends State<ControllerScreen>
     );
   }
 
+  // -------------------------- Keyboard layout ------------------------- //
   Widget _buildKeyboardLayout() {
+    final media = MediaQuery.of(context).size;
     final keys = ['W', 'A', 'S', 'D', 'SPACE', 'SHIFT', 'CTRL', 'ENTER', 'ESC'];
+    final keySize = (media.height * 0.24).clamp(60.0, 120.0);
     return Padding(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(8, 64, 8, 24),
       child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
+        spacing: 12,
+        runSpacing: 12,
         alignment: WrapAlignment.center,
-        children: keys.map(_buildKeyboardKey).toList(),
+        children: keys
+            .map((k) => _buildKeyboardKey(k, keySize))
+            .toList(),
       ),
     );
   }
 
-  Widget _buildKeyboardKey(String key) {
+  Widget _buildKeyboardKey(String key, double size) {
     return GestureDetector(
       onTapDown: (_) => _setButton(key, true),
       onTapUp: (_) => _setButton(key, false),
       child: Container(
-        width: 70, height: 70,
+        width: size,
+        height: size,
         decoration: AppTheme.glass(radius: 14),
         child: Center(
           child: Text(key,
@@ -482,124 +759,250 @@ class _ControllerScreenState extends State<ControllerScreen>
     );
   }
 
-  Widget _buildCenterButton(String label) {
+  // --------------------------- Menu / chrome -------------------------- //
+  Widget _buildMenuButton() {
     return GestureDetector(
-      onTapDown: (_) => _setButton(label, true),
-      onTapUp: (_) => _setButton(label, false),
-      onTapCancel: () => _setButton(label, false),
-      child: Container(
-        width: 62,
-        height: 36,
-        decoration: AppTheme.glass(radius: 18),
-        alignment: Alignment.center,
-        child: Text(label,
-            style: const TextStyle(
-                fontSize: 9,
-                color: Colors.white70,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.5)),
-      ),
-    );
-  }
-
-  Widget _buildBottomBar() {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.white.withOpacity(0.06),
-            Colors.white.withOpacity(0.02),
-          ],
-        ),
-        border: const Border(top: BorderSide(color: AppTheme.hairline)),
-      ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            _buildControlChip(
-                icon: Icons.screen_rotation, label: 'Landscape',
-                isActive: _isLandscape, onTap: _toggleLandscape),
-            _buildControlChip(
-                icon: Icons.gamepad, label: 'Gamepad',
-                isActive: _currentLayout == ControllerLayout.gamepad,
-                onTap: () => setState(() => _currentLayout = ControllerLayout.gamepad)),
-            _buildLayoutChip(ControllerLayout.psp, 'PSP', Icons.videogame_asset),
-            _buildLayoutChip(ControllerLayout.ps5, 'PS5', Icons.sports_esports),
-            _buildControlChip(
-                icon: Icons.grid_on,
-                label: _dpadMode ? 'Stick' : 'D-Pad',
-                isActive: _dpadMode,
-                onTap: () => setState(() => _dpadMode = !_dpadMode)),
-            Builder(builder: (context) {
-              return _buildControlChip(
-                  icon: Icons.settings, label: 'Settings', isActive: false,
-                  onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                      ));
-            }),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLayoutChip(ControllerLayout layout, String label, IconData icon) {
-    return _buildControlChip(
-      icon: icon,
-      label: label,
-      isActive: _currentLayout == layout,
-      onTap: () => setState(() => _currentLayout = layout),
-    );
-  }
-
-  Widget _buildControlChip({
-    required IconData icon,
-    required String label,
-    required bool isActive,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
+      onTap: () => setState(() => _menuOpen = !_menuOpen),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        width: 44,
+        height: 44,
         decoration: BoxDecoration(
-          color: isActive
-              ? AppTheme.accentA.withOpacity(0.22)
-              : Colors.white.withOpacity(0.04),
-          borderRadius: BorderRadius.circular(14),
+          shape: BoxShape.circle,
+          gradient: _menuOpen
+              ? AppTheme.accentGradient
+              : const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0x1AFFFFFF), Color(0x0AFFFFFF)],
+                ),
           border: Border.all(
-              color: isActive ? AppTheme.accentB : AppTheme.hairline,
-              width: 1.2),
-          boxShadow: isActive ? AppTheme.glow(AppTheme.accentA, opacity: 0.45) : null,
+              color: _menuOpen ? AppTheme.accentB : AppTheme.hairline, width: 1.2),
+          boxShadow: AppTheme.glow(AppTheme.accentA, opacity: 0.35),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: Icon(_menuOpen ? Icons.close : Icons.menu,
+            color: Colors.white, size: 22),
+      ),
+    );
+  }
+
+  Widget _buildLatencyPill() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.35),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppTheme.hairline),
+      ),
+      child: Consumer<ConnectionManager>(
+        builder: (context, manager, _) => Row(
           children: [
-            Icon(icon, size: 22,
-                color: isActive ? AppTheme.accentB : Colors.white54),
-            const SizedBox(height: 4),
-            Text(label,
-                style: TextStyle(
-                    fontSize: 10,
-                    color: isActive ? AppTheme.accentB : Colors.white54,
-                    fontWeight: FontWeight.w500)),
+            Icon(manager.mode == ConnectionMode.usb ? Icons.usb : Icons.wifi,
+                size: 14, color: AppTheme.green),
+            const SizedBox(width: 6),
+            Text('${manager.latency}ms',
+                style: const TextStyle(
+                    fontSize: 12, color: AppTheme.green,
+                    fontWeight: FontWeight.bold)),
           ],
         ),
       ),
     );
   }
 
-  Color _getLatencyColor(int latency) {
-    if (latency < 10) return const Color(0xFF22C55E);
-    if (latency < 30) return const Color(0xFFF59E0B);
-    return const Color(0xFFEF4444);
+  Widget _buildMenuOverlay() {
+    return GestureDetector(
+      onTap: () => setState(() => _menuOpen = false),
+      child: Container(
+        color: Colors.black.withOpacity(0.45),
+        alignment: Alignment.topCenter,
+        padding: const EdgeInsets.only(top: 60),
+        child: GestureDetector(
+          onTap: () {},
+          child: Container(
+            width: 320,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  const Color(0xFF1B2436).withOpacity(0.97),
+                  const Color(0xFF10162B).withOpacity(0.97),
+                ],
+              ),
+              border: Border.all(color: AppTheme.hairline),
+              boxShadow: AppTheme.glow(AppTheme.accentA, opacity: 0.25,
+                  blur: 30),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('CONTROLS',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 12,
+                        letterSpacing: 1.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.accentB)),
+                const SizedBox(height: 12),
+                _menuLabel('STYLES'),
+                _menuRow(Icons.favorite, 'Simple', ControllerLayout.simple),
+                _menuRow(Icons.gamepad, 'Gamepad', ControllerLayout.gamepad),
+                _menuRow(Icons.military_tech, 'Pro', ControllerLayout.pro),
+                _menuRow(Icons.videogame_asset, 'PSP', ControllerLayout.psp),
+                _menuRow(Icons.sports_esports, 'PS5', ControllerLayout.ps5),
+                _menuRow(Icons.mouse, 'Mouse', ControllerLayout.mouse),
+                _menuRow(Icons.keyboard, 'Keyboard', ControllerLayout.keyboard),
+                _menuRow(Icons.tune, 'My Custom',
+                    ControllerLayout.custom, enabled: _hasCustom),
+                const SizedBox(height: 12),
+                _menuLabel('CUSTOMIZE'),
+                _menuAction(Icons.edit, 'Edit Custom Layout', _openEditor),
+                const SizedBox(height: 12),
+                _menuToggle(
+                  icon: Icons.grid_on,
+                  label: _dpadMode ? 'D-Pad (left grip)' : 'Stick (left grip)',
+                  value: _dpadMode,
+                  onChanged: (v) => setState(() => _dpadMode = v),
+                ),
+                const SizedBox(height: 4),
+                _menuAction(Icons.settings, 'Settings', () {
+                  Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const SettingsScreen()));
+                }),
+                const SizedBox(height: 8),
+                _menuAction(Icons.exit_to_app, 'Disconnect', _exit,
+                    color: AppTheme.red),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _menuRow(IconData icon, String label, ControllerLayout layout,
+      {bool enabled = true}) {
+    final active = _currentLayout == layout;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: enabled
+            ? () {
+                setState(() {
+                  _currentLayout = layout;
+                  _menuOpen = false;
+                });
+              }
+            : null,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: active
+                ? AppTheme.accentA.withOpacity(0.2)
+                : Colors.white.withOpacity(0.03),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+                color: active ? AppTheme.accentB : Colors.transparent,
+                width: 1),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 20,
+                  color: active
+                      ? AppTheme.accentB
+                      : enabled
+                          ? Colors.white60
+                          : Colors.white30),
+              const SizedBox(width: 12),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 14,
+                      color: active
+                          ? Colors.white
+                          : enabled
+                              ? Colors.white70
+                              : Colors.white30,
+                      fontWeight:
+                          active ? FontWeight.w700 : FontWeight.w400)),
+              const Spacer(),
+              if (active)
+                const Icon(Icons.check, size: 18, color: AppTheme.accentB),
+              if (!enabled && !active)
+                const Text('Build one',
+                    style: TextStyle(
+                        fontSize: 10, color: Colors.white30)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _menuLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 4, 4, 2),
+      child: Text(text,
+          style: const TextStyle(
+              fontSize: 10,
+              letterSpacing: 1.2,
+              fontWeight: FontWeight.w700,
+              color: Colors.white38)),
+    );
+  }
+
+  bool get _hasCustom =>
+      (context.read<LayoutStore>().layout?.slots.isNotEmpty ?? false);
+
+  Widget _menuToggle({
+    required IconData icon,
+    required String label,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: Colors.white60),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(label,
+                style: const TextStyle(fontSize: 14, color: Colors.white70)),
+          ),
+          Switch(value: value, onChanged: onChanged, activeColor: AppTheme.accentA),
+        ],
+      ),
+    );
+  }
+
+  Widget _menuAction(IconData icon, String label, VoidCallback onTap,
+      {Color color = Colors.white70}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.03),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 20, color: color),
+              const SizedBox(width: 12),
+              Text(label,
+                  style: TextStyle(fontSize: 14, color: color)),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

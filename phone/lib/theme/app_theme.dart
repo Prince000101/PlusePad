@@ -28,7 +28,7 @@ class AppTheme {
   static LinearGradient get accentGradient =>
       const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [accentB, accentA]);
 
-  /// A frosted glass surface with a soft drop shadow.
+  /// A frosted glass surface (rounded rectangle) with a soft drop shadow.
   static BoxDecoration glass({
     double radius = 16,
     Color? tint,
@@ -55,6 +55,32 @@ class AppTheme {
           color: accentA.withOpacity(0.06),
           blurRadius: blur,
           offset: const Offset(0, 2),
+        ),
+      ],
+    );
+  }
+
+  /// A circular frosted glass surface (for round buttons).
+  static BoxDecoration glassShape({
+    Color? tint,
+    double blur = 14,
+  }) {
+    return BoxDecoration(
+      shape: BoxShape.circle,
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          (tint ?? Colors.white).withOpacity(0.10),
+          (tint ?? Colors.white).withOpacity(0.04),
+        ],
+      ),
+      border: Border.all(color: hairline, width: 1),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.45),
+          blurRadius: blur,
+          offset: const Offset(0, 6),
         ),
       ],
     );

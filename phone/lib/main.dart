@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'services/connection_manager.dart';
+import 'services/layout_store.dart';
 import 'screens/connection_screen.dart';
 import 'theme/app_theme.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final store = LayoutStore();
+  await store.load();
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -15,16 +18,21 @@ void main() {
       systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
-  runApp(const PulsePadApp());
+  runApp(PulsePadApp(layoutStore: store));
 }
 
 class PulsePadApp extends StatelessWidget {
-  const PulsePadApp({super.key});
+  const PulsePadApp({super.key, this.layoutStore});
+  final LayoutStore? layoutStore;
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => ConnectionManager(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ConnectionManager()),
+        ChangeNotifierProvider<LayoutStore>(
+            create: (_) => layoutStore ?? LayoutStore()..load()),
+      ],
       child: MaterialApp(
         title: 'PulsePad',
         debugShowCheckedModeBanner: false,

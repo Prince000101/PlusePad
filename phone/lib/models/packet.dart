@@ -5,7 +5,7 @@ enum ConnectionMode { usb, wifi }
 
 enum ConnectionStatus { disconnected, connecting, connected, error }
 
-enum ControllerLayout { gamepad, psp, ps5, mouse, keyboard }
+enum ControllerLayout { simple, gamepad, pro, psp, ps5, mouse, keyboard, custom }
 
 /// Descriptor returned by the PC discovery beacon so the phone can connect
 /// without typing an IP address.

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'services/connection_manager.dart';
+import 'services/layout_store.dart';
 import 'screens/controller_screen.dart';
 
 /// Chrome-only preview entrypoint.
@@ -22,8 +23,11 @@ class _DemoConnectionManager extends ConnectionManager {
 
 void main() {
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => _DemoConnectionManager(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => _DemoConnectionManager()),
+        ChangeNotifierProvider(create: (_) => LayoutStore()),
+      ],
       child: const MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'PulsePad UI Preview',
