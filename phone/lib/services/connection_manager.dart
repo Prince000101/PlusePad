@@ -365,17 +365,19 @@ class ConnectionManager extends ChangeNotifier {
   }
 
   void _send(Uint8List data) {
-    if (_mode == ConnectionMode.usb) {
-      _tcp?.add(data);
-      return;
-    }
-    final target = _udpTarget;
-    if (target != null && _udp != null) {
-      try {
-        _udp!.send(data, target.addr, target.port);
-      } catch (e) {
-        debugPrint('udp send: $e');
+    try {
+      if (_mode == ConnectionMode.usb) {
+        _tcp?.add(data);
+        return;
       }
+      final target = _udpTarget;
+      if (target != null && _udp != null) {
+        _udp!.send(data, target.addr, target.port);
+      }
+    } catch (e) {
+      // Closed/degraded socket mid-session: drop the packet. The TCP reader's
+      // onDone or a later PING/PONG round-trip surfaces the real disconnect.
+      debugPrint('send: $e');
     }
   }
 
@@ -395,12 +397,14 @@ class ConnectionManager extends ChangeNotifier {
 
   _UdpTarget? get _udpTarget {
     if (_typedIp.isNotEmpty) {
-      return _UdpTarget(InternetAddress(_typedIp),
-          _qrUdpPort > 0 ? _qrUdpPort : 5006);
+      final addr = InternetAddress.tryParse(_typedIp);
+      if (addr == null) return null;
+      return _UdpTarget(addr, _qrUdpPort > 0 ? _qrUdpPort : 5006);
     }
     if (_discovered.isNotEmpty) {
       final s = _discovered.first;
-      return _UdpTarget(InternetAddress(s.host), s.udpPort);
+      final addr = InternetAddress.tryParse(s.host);
+      return addr == null ? null : _UdpTarget(addr, s.udpPort);
     }
     return null;
   }

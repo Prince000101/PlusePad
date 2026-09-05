@@ -230,67 +230,22 @@ class _ControllerScreenState extends State<ControllerScreen>
     );
   }
 
-  /// A compact vertical pair of bumpers for one grip corner.
+  /// A compact pair of shoulder bumpers for one grip corner. Steam-style:
+  /// large targets with tactile press feedback.
   Widget _cornerBumpers(List<String> labels, {required bool left}) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: labels.map((l) {
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 3),
-          child: GestureDetector(
-            onTapDown: (_) => _setButton(l, true),
-            onTapUp: (_) => _setButton(l, false),
-            onTapCancel: () => _setButton(l, false),
-            child: Container(
-              width: 52,
-              height: 40,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                gradient: const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0xFF2C3A54), Color(0xFF151C2E)],
-                ),
-                border: Border.all(color: AppTheme.hairline, width: 1.2),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.45),
-                    blurRadius: 6,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              alignment: Alignment.center,
-              child: Text(l,
-                  style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white70)),
-            ),
-          ),
+          child: _Bumper(label: l, onChanged: _setButton),
         );
       }).toList(),
     );
   }
 
   Widget _pill(String label) {
-    return GestureDetector(
-      onTapDown: (_) => _setButton(label, true),
-      onTapUp: (_) => _setButton(label, false),
-      onTapCancel: () => _setButton(label, false),
-      child: Container(
-        width: 52,
-        height: 30,
-        alignment: Alignment.center,
-        decoration: AppTheme.glass(radius: 15),
-        child: Text(label,
-            style: const TextStyle(
-                fontSize: 8,
-                color: Colors.white70,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.4)),
-      ),
-    );
+    return _PillButton(label: label, onChanged: _setButton);
   }
 
   // ---------------------------- Simple layout -------------------------- //
@@ -1067,6 +1022,132 @@ class _ControllerScreenState extends State<ControllerScreen>
                   style: TextStyle(fontSize: 14, color: color)),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Bumper extends StatefulWidget {
+  final String label;
+  final void Function(String, bool) onChanged;
+
+  const _Bumper({required this.label, required this.onChanged});
+
+  @override
+  State<_Bumper> createState() => _BumperState();
+}
+
+class _BumperState extends State<_Bumper> {
+  bool _pressed = false;
+
+  void _set(bool v) {
+    if (_pressed == v) return;
+    setState(() => _pressed = v);
+    widget.onChanged(widget.label, v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => _set(true),
+      onTapUp: (_) => _set(false),
+      onTapCancel: () => _set(false),
+      child: AnimatedScale(
+        scale: _pressed ? 0.92 : 1.0,
+        duration: const Duration(milliseconds: 60),
+        curve: Curves.easeOut,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 60),
+          width: 68,
+          height: 44,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            gradient: _pressed
+                ? AppTheme.accentGradient
+                : const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0xFF2C3A54), Color(0xFF151C2E)]),
+            border: Border.all(
+              color: _pressed ? AppTheme.accentB : AppTheme.hairline,
+              width: 1.2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.45),
+                blurRadius: 6,
+                offset: const Offset(0, 4),
+              ),
+              if (_pressed)
+                BoxShadow(
+                  color: AppTheme.accentA.withOpacity(0.35),
+                  blurRadius: 16,
+                ),
+            ],
+          ),
+          child: Text(widget.label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: _pressed ? Colors.white : Colors.white70,
+              )),
+        ),
+      ),
+    );
+  }
+}
+
+class _PillButton extends StatefulWidget {
+  final String label;
+  final void Function(String, bool) onChanged;
+
+  const _PillButton({required this.label, required this.onChanged});
+
+  @override
+  State<_PillButton> createState() => _PillButtonState();
+}
+
+class _PillButtonState extends State<_PillButton> {
+  bool _pressed = false;
+
+  void _set(bool v) {
+    if (_pressed == v) return;
+    setState(() => _pressed = v);
+    widget.onChanged(widget.label, v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => _set(true),
+      onTapUp: (_) => _set(false),
+      onTapCancel: () => _set(false),
+      child: AnimatedScale(
+        scale: _pressed ? 0.9 : 1.0,
+        duration: const Duration(milliseconds: 60),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 60),
+          width: 52,
+          height: 30,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            gradient: _pressed ? AppTheme.accentGradient : null,
+            color: _pressed ? null : Colors.white.withOpacity(0.06),
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(
+              color: _pressed ? AppTheme.accentB : AppTheme.hairline,
+              width: 1.2,
+            ),
+          ),
+          child: Text(widget.label,
+              style: TextStyle(
+                fontSize: 8,
+                color: _pressed ? Colors.white : Colors.white70,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.4,
+              )),
         ),
       ),
     );
