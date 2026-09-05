@@ -21,6 +21,7 @@ ls -la /dev/uinput
 
 echo
 echo "Done. PulsePad can now create the virtual gamepad."
-echo "Test it:  Start Daemon + Simulate Phone, then open a gamepad tester."
+echo "Test it:  open the PulsePad Control Center, Start Daemon, then press"
+echo "  buttons in the phone app to watch the built-in Gamepad tester."
 echo "CLI-only: python3 simulate_phone.py --host 127.0.0.1"
 echo "  and watch it with:  sudo apt install joystick && jstest /dev/input/js0"

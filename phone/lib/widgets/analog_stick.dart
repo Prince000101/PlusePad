@@ -4,11 +4,13 @@ import '../theme/app_theme.dart';
 class AnalogStick extends StatefulWidget {
   final Function(double x, double y) onChanged;
   final double size;
+  final double deadZone;
 
   const AnalogStick({
     super.key,
     required this.onChanged,
-    this.size = 200,
+    this.size = 160,
+    this.deadZone = 0.12,
   });
 
   @override
@@ -17,44 +19,35 @@ class AnalogStick extends StatefulWidget {
 
 class _AnalogStickState extends State<AnalogStick> {
   Offset _position = Offset.zero;
-  final double _stickRadius = 28;
-  final double _deadZone = 0.12;
+  final double _stickRadius = 26;
 
-  void _handlePanUpdate(DragUpdateDetails details, BoxConstraints constraints) {
-    final center = Offset(widget.size / 2, widget.size / 2);
-    final maxRadius = widget.size / 2 - _stickRadius - 10;
+  void _handlePanUpdate(DragUpdateDetails details) {
+    final maxRadius = widget.size / 2 - _stickRadius - 8;
 
-    final rawPosition = details.localPosition - center;
+    final rawPosition = details.localPosition - Offset(widget.size / 2, widget.size / 2);
     final magnitude = rawPosition.distance;
-    final normalizedMagnitude = magnitude / maxRadius;
+    final normalizedMagnitude = (magnitude / maxRadius).clamp(0.0, 1.0);
 
-    double x = rawPosition.dx / maxRadius;
-    double y = rawPosition.dy / maxRadius;
+    var x = normalizedMagnitude == 0 ? 0.0 : rawPosition.dx / rawPosition.distance;
+    var y = normalizedMagnitude == 0 ? 0.0 : rawPosition.dy / rawPosition.distance;
+    x = (x * normalizedMagnitude).clamp(-1.0, 1.0);
+    y = (y * normalizedMagnitude).clamp(-1.0, 1.0);
 
-    if (normalizedMagnitude > 1) {
-      final scale = 1 / normalizedMagnitude;
-      x *= scale;
-      y *= scale;
-    }
-
-    final clampedMagnitude = normalizedMagnitude.clamp(0.0, 1.0);
-
-    if (clampedMagnitude < _deadZone) {
+    // Radial dead zone with smooth re-scale above it.
+    if (normalizedMagnitude < widget.deadZone) {
       x = 0;
       y = 0;
     } else {
-      final adjusted = (clampedMagnitude - _deadZone) / (1 - _deadZone);
-      final scale = adjusted / clampedMagnitude.clamp(0.001, double.infinity);
+      final adjusted = (normalizedMagnitude - widget.deadZone) / (1 - widget.deadZone);
+      final scale = adjusted / normalizedMagnitude;
       x *= scale;
       y *= scale;
     }
 
     final clampedX = x.clamp(-1.0, 1.0);
     final clampedY = y.clamp(-1.0, 1.0);
-    final outputX = clampedX * maxRadius;
-    final outputY = clampedY * maxRadius;
 
-    setState(() => _position = Offset(outputX, outputY));
+    setState(() => _position = Offset(clampedX, clampedY) * maxRadius);
     widget.onChanged(clampedX, clampedY);
   }
 
@@ -64,96 +57,47 @@ class _AnalogStickState extends State<AnalogStick> {
   }
 
   bool get _active => _position != Offset.zero;
+  double get _size => widget.size;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: widget.size,
-      height: widget.size,
+      width: _size,
+      height: _size,
       child: GestureDetector(
-        onPanUpdate: (d) => _handlePanUpdate(d, BoxConstraints.tight(Size(widget.size, widget.size))),
+        onPanUpdate: _handlePanUpdate,
         onPanEnd: _handlePanEnd,
         child: Container(
-          width: widget.size,
-          height: widget.size,
+          width: _size,
+          height: _size,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            gradient: const RadialGradient(
-              colors: [Color(0xFF10162B), Color(0xFF0A0F20)],
-              center: Alignment(-0.2, -0.2),
+            color: AppTheme.surface,
+            border: Border.all(
+              color: _active ? AppTheme.accent : AppTheme.hairline,
+              width: _active ? 1.6 : 1.2,
             ),
-            border: Border.all(color: AppTheme.hairline, width: 1.5),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.55),
-                blurRadius: 14,
-                spreadRadius: 2,
-                offset: const Offset(0, 5),
-              ),
-              BoxShadow(
-                color: AppTheme.accentA.withOpacity(_active ? 0.35 : 0.10),
-                blurRadius: _active ? 22 : 10,
-                spreadRadius: _active ? 2 : 0,
-              ),
-            ],
           ),
           child: Center(
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 30),
-                width: _stickRadius * 2,
-                height: _stickRadius * 2,
-                transform: Matrix4.translationValues(_position.dx, _position.dy, 0),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      Color.lerp(AppTheme.accentB, Colors.white, 0.18)!,
-                      AppTheme.accentB,
-                      AppTheme.accentA,
-                    ],
-                    stops: const [0.0, 0.55, 1.0],
-                  ),
-                  border: Border.all(color: Colors.white.withOpacity(0.25), width: 1.5),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppTheme.accentA.withOpacity(_active ? 0.7 : 0.45),
-                      blurRadius: _active ? 22 : 12,
-                      spreadRadius: _active ? 3 : 1,
-                    ),
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.4),
-                      blurRadius: 5,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    // soft inner gloss highlight
-                    Positioned(
-                      top: 5,
-                      child: Container(
-                        width: _stickRadius - 4,
-                        height: _stickRadius - 8,
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [Colors.white24, Colors.transparent],
-                          ),
-                        ),
-                      ),
-                    ),
-                    Icon(
-                      Icons.gps_fixed,
-                      size: _stickRadius * 0.6,
-                      color: Colors.white.withOpacity(0.9),
-                    ),
-                  ],
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 30),
+              width: _stickRadius * 2,
+              height: _stickRadius * 2,
+              transform: Matrix4.translationValues(_position.dx, _position.dy, 0),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _active ? AppTheme.accentAt(0.22) : AppTheme.surfaceBright,
+                border: Border.all(
+                  color: _active ? AppTheme.accent : AppTheme.hairline,
+                  width: _active ? 1.4 : 1.0,
                 ),
               ),
+              child: Icon(
+                Icons.gps_fixed,
+                size: _stickRadius * 0.62,
+                color: _active ? AppTheme.accent : AppTheme.textSecondary,
+              ),
+            ),
           ),
         ),
       ),

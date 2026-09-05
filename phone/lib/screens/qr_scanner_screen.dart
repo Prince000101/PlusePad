@@ -37,7 +37,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       messenger.showSnackBar(
         const SnackBar(
             content: Text('Not a valid PulsePad QR code'),
-            backgroundColor: Colors.redAccent),
+            backgroundColor: AppTheme.red),
       );
       return;
     }
@@ -46,9 +46,8 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     final isWifi = manager.mode == ConnectionMode.wifi;
     messenger.showSnackBar(
       SnackBar(
-        content: Text(
-            'Loaded ${manager.ipAddress} (${isWifi ? "Wi-Fi" : "USB"})'),
-        backgroundColor: const Color(0xFF22C55E),
+        content: Text('Loaded ${manager.ipAddress} (${isWifi ? "Wi-Fi" : "USB"})'),
+        backgroundColor: AppTheme.green,
       ),
     );
     Navigator.pop(context, true);
@@ -57,37 +56,40 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(title: const Text('Scan PC QR'),
-          backgroundColor: Colors.black,
-          foregroundColor: Colors.white),
+      backgroundColor: AppTheme.bg,
+      appBar: AppBar(
+          title: const Text('Scan PC QR',
+              style: TextStyle(color: AppTheme.textPrimary)),
+          backgroundColor: AppTheme.bg,
+          foregroundColor: AppTheme.textPrimary),
       body: Stack(
         children: [
-          // Detection covers the WHOLE preview (no scanWindow restriction) so
-          // the QR is caught no matter where it is on screen.
           MobileScanner(
             controller: _controller,
             fit: BoxFit.cover,
             errorBuilder: (context, error, child) => const Center(
               child: Text('Camera error',
-                  style: TextStyle(color: Colors.white)),
+                  style: TextStyle(color: AppTheme.textPrimary)),
             ),
             onDetect: (capture) {
               _handleCode(
                   capture.barcodes.isNotEmpty ? capture.barcodes.first : null);
             },
           ),
-          // Decorative guide box only — does NOT restrict detection.
           Center(
             child: Container(
               width: 250,
               height: 250,
               decoration: BoxDecoration(
                 border: Border.all(
-                    color: AppTheme.accentB.withOpacity(0.7),
-                    width: 2.5),
+                    color: AppTheme.accent.withAlpha(190), width: 2),
                 borderRadius: BorderRadius.circular(24),
-                boxShadow: AppTheme.glow(AppTheme.accentA, opacity: 0.3, blur: 24),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.accentAt(0.2),
+                    blurRadius: 26,
+                  ),
+                ],
               ),
             ),
           ),
@@ -99,7 +101,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
               child: Text(
                 'Point the camera at the QR code on the PC screen',
                 style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
+                    color: AppTheme.textPrimary.withAlpha(230),
                     fontSize: 14,
                     backgroundColor: Colors.black54),
                 textAlign: TextAlign.center,

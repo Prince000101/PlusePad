@@ -19,48 +19,74 @@ class _SettingsScreenState extends State<SettingsScreen> {
         backgroundColor: Colors.transparent,
         appBar: AppBar(
           backgroundColor: Colors.transparent,
-          title: const Text('Settings'),
+          title: const Text('Settings',
+              style: TextStyle(color: AppTheme.textPrimary)),
         ),
         body: Consumer<ConnectionManager>(
-        builder: (context, manager, _) => ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            _section('Connection', [
-              _infoTile('Mode', manager.mode.name.toUpperCase()),
-              _infoTile('IP Address',
-                  manager.ipAddress.isEmpty ? 'Auto / Not set' : manager.ipAddress),
-              _infoTile('Latency',
-                  manager.state == ConnectionStatus.disconnected
-                      ? '--'
-                      : '${manager.latency} ms'),
-            ]),
-            const SizedBox(height: 24),
-            _section('Controller', [
-              _sliderTile('Dead Zone',
-                  manager.deadZone, 0.0, 0.5, (v) {
-                setState(() => manager.deadZone = v.abs());
-              }),
-              _sliderTile('Sensitivity',
-                  manager.sensitivity, 0.5, 2.0, (v) {
-                setState(() => manager.sensitivity = v);
-              }),
-            ]),
-            const SizedBox(height: 24),
-            _section('Connection Guide', [
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text(
-                  'USB:  run  adb reverse tcp:5005 tcp:5005  on the PC once.\n\n'
-                  'Wi-Fi: press the radar button to auto-find your PC, or type '
-                  'its IP address. Both must be on the same network.\n\n'
-                  'On the PC, start the daemon with sudo.',
-                  style: TextStyle(color: Colors.white54, fontSize: 13, height: 1.5),
+          builder: (context, manager, _) => ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              _section('CONNECTION', [
+                _infoTile('Mode', manager.mode.name.toUpperCase()),
+                _infoTile(
+                    'IP Address',
+                    manager.ipAddress.isEmpty
+                        ? 'Auto / Not set'
+                        : manager.ipAddress),
+                _infoTile(
+                    'Latency',
+                    manager.state == ConnectionStatus.disconnected
+                        ? '--'
+                        : '${manager.latency} ms'),
+                _switchTile('Auto-reconnect', manager.autoReconnect, (v) {
+                  setState(() => manager.autoReconnect = v);
+                }),
+              ]),
+              const SizedBox(height: 20),
+              _section('CONTROLLER', [
+                _sliderTile(
+                  'Dead Zone',
+                  '${(manager.deadZone * 100).round()}%',
+                  manager.deadZone,
+                  0.0,
+                  0.5,
+                  (v) => setState(() => manager.deadZone = v.abs()),
                 ),
-              ),
-            ]),
-          ],
+                _dividerTile(),
+                _sliderTile(
+                  'Sensitivity',
+                  '${manager.sensitivity.toStringAsFixed(2)}×',
+                  manager.sensitivity,
+                  0.5,
+                  2.0,
+                  (v) => setState(() => manager.sensitivity = v),
+                ),
+                _dividerTile(),
+                _switchTile('Button Feedback', manager.buttonFeedback, (v) {
+                  setState(() => manager.buttonFeedback = v);
+                }),
+              ]),
+              const SizedBox(height: 20),
+              _section('CONNECTION GUIDE', [
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'USB: run  adb reverse tcp:5005 tcp:5005  on the PC once.\n\n'
+                    'Wi-Fi: press the radar button to auto-find your PC, or '
+                    'type its IP. Both must be on the same network.\n\n'
+                    'Start the daemon on the PC with sudo.',
+                    style: TextStyle(color: AppTheme.textSecondary, height: 1.5),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 20),
+              _section('ABOUT', [
+                _infoTile('Version', '1.0.0'),
+                _infoTile('Protocol', 'PulsePad • v1'),
+              ]),
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
@@ -69,40 +95,69 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.accentB,
-          ),
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(title, style: AppTheme.label),
         ),
-        const SizedBox(height: 12),
         Container(
-          decoration: AppTheme.glass(radius: 16, blur: 14),
+          decoration: AppTheme.card(),
           child: Column(children: children),
         ),
       ],
     );
   }
 
+  Widget _dividerTile() => const Divider(
+      height: 1, thickness: 1, color: AppTheme.hairline, indent: 16, endIndent: 16);
+
   Widget _infoTile(String label, String value) {
     return ListTile(
-      title: Text(label),
-      trailing: Text(value, style: const TextStyle(color: Colors.white54)),
+      title: Text(label, style: AppTheme.bodySecondary),
+      trailing: Text(value, style: AppTheme.caption),
     );
   }
 
-  Widget _sliderTile(
-      String label, double value, double min, double max, ValueChanged<double> onChanged) {
+  Widget _switchTile(String label, bool value, ValueChanged<bool> onChanged) {
     return ListTile(
-      title: Text(label),
-      subtitle: Slider(
+      title: Text(label, style: AppTheme.bodySecondary),
+      trailing: Switch(
         value: value,
-        min: min,
-        max: max,
         onChanged: onChanged,
-        activeColor: AppTheme.accentA,
+        activeColor: AppTheme.accent,
+        activeTrackColor: AppTheme.accentAt(0.4),
+      ),
+    );
+  }
+
+  Widget _sliderTile(String label, String readout, double value, double min,
+      double max, ValueChanged<double> onChanged) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(label, style: AppTheme.bodySecondary),
+              const Spacer(),
+              Text(readout, style: AppTheme.label.copyWith(color: AppTheme.accent)),
+            ],
+          ),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: AppTheme.accent,
+              inactiveTrackColor: AppTheme.surfaceAlt,
+              thumbColor: AppTheme.accent,
+              overlayColor: AppTheme.accentAt(0.2),
+            ),
+            child: Slider(
+              value: value.clamp(min, max),
+              min: min,
+              max: max,
+              onChanged: onChanged,
+            ),
+          ),
+        ],
       ),
     );
   }

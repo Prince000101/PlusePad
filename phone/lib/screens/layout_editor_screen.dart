@@ -50,7 +50,7 @@ class _LayoutEditorScreenState extends State<LayoutEditorScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: AppTheme.bg,
       body: Background(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -152,11 +152,12 @@ class _LayoutEditorScreenState extends State<LayoutEditorScreen> {
           children: [
             Container(
               decoration: BoxDecoration(
-                color: _colorFor(s.kind).withOpacity(isSelected || _dragging ? 0.45 : 0.30),
+                color: _colorFor(s.kind).withAlpha(
+                    (isSelected || _dragging ? 150 : 95).clamp(0, 255)),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                    color: isSelected ? AppTheme.accentB : AppTheme.hairline,
-                    width: isSelected ? 2.5 : 1.2),
+                    color: isSelected ? AppTheme.accent : AppTheme.hairline,
+                    width: isSelected ? 2 : 1.2),
               ),
               alignment: Alignment.center,
               child: Column(
@@ -188,13 +189,12 @@ class _LayoutEditorScreenState extends State<LayoutEditorScreen> {
                     height: _grip,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: AppTheme.accentA,
-                      border: Border.all(color: Colors.white, width: 2),
-                      boxShadow:
-                          AppTheme.glow(AppTheme.accentA, opacity: 0.6),
+                      color: AppTheme.accent,
+                      border:
+                          Border.all(color: AppTheme.bg, width: 2),
                     ),
                     child: const Icon(Icons.arrow_outward,
-                        size: 12, color: Colors.white),
+                        size: 12, color: AppTheme.bg),
                   ),
                 ),
               ),
@@ -240,56 +240,52 @@ class _LayoutEditorScreenState extends State<LayoutEditorScreen> {
     final sel = _selected;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            const Color(0xFF151C2E).withOpacity(0.96),
-            const Color(0xFF0B1120).withOpacity(0.98),
-          ],
-        ),
-        border: const Border(top: BorderSide(color: AppTheme.hairline)),
+      decoration: const BoxDecoration(
+        color: AppTheme.surface,
+        border: Border(top: BorderSide(color: AppTheme.hairline)),
       ),
       child: sel == null ? _buildAddRow() : _buildEditRow(sel),
     );
   }
 
   Widget _buildAddRow() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: [
-        _toolButton(Icons.touch_app, 'Button', () => _add('button')),
-        _toolButton(Icons.grid_on, 'D-Pad', () => _add('dpad')),
-        _toolButton(Icons.gps_fixed, 'Stick', () => _add('stick')),
-        const Spacer(),
-        const Text('Tap a control to edit it',
-            style: TextStyle(color: Colors.white38, fontSize: 12)),
-      ],
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _toolButton(Icons.touch_app, 'Button', () => _add('button')),
+          const SizedBox(width: 8),
+          _toolButton(Icons.grid_on, 'D-Pad', () => _add('dpad')),
+          const SizedBox(width: 8),
+          _toolButton(Icons.gps_fixed, 'Stick', () => _add('stick')),
+          const SizedBox(width: 16),
+          const Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Text('Tap a control to edit it',
+                style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildEditRow(ControlSlot s) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          children: [
-            _toolButton(Icons.label, 'Rename', () => _rename(s)),
-            const SizedBox(width: 8),
-            _toolButton(Icons.swap_horiz, 'Action', () => _chooseAction(s)),
-            const SizedBox(width: 8),
-            _toolButton(Icons.tune, 'Bigger', () => _resizeStep(s, 1.15)),
-            const SizedBox(width: 8),
-            _toolButton(Icons.tune, 'Smaller', () => _resizeStep(s, 0.87)),
-            const Spacer(),
-            _toolButton(Icons.delete, 'Delete', () => _delete(s), danger: true),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Text('${s.kind.toUpperCase()}  •  ${s.action.isEmpty ? s.label : s.action}',
-            style: const TextStyle(color: Colors.white60, fontSize: 12)),
-      ],
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _toolButton(Icons.label, 'Rename', () => _rename(s)),
+          const SizedBox(width: 8),
+          _toolButton(Icons.swap_horiz, 'Action', () => _chooseAction(s)),
+          const SizedBox(width: 8),
+          _toolButton(Icons.add, 'Bigger', () => _resizeStep(s, 1.15)),
+          const SizedBox(width: 8),
+          _toolButton(Icons.remove, 'Smaller', () => _resizeStep(s, 0.87)),
+          const SizedBox(width: 16),
+          _toolButton(Icons.delete, 'Delete', () => _delete(s), danger: true),
+          const SizedBox(width: 12),
+        ],
+      ),
     );
   }
 
@@ -300,23 +296,24 @@ class _LayoutEditorScreenState extends State<LayoutEditorScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: (danger ? AppTheme.red : AppTheme.accentA).withOpacity(0.18),
+          color: (danger ? AppTheme.red : AppTheme.accent).withAlpha(
+              (danger ? 60 : 42).clamp(0, 255)),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-              color: (danger ? AppTheme.red : AppTheme.accentB)
-                  .withOpacity(0.5)),
+              color: (danger ? AppTheme.red : AppTheme.accent)
+                  .withAlpha((danger ? 160 : 120).clamp(0, 255))),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 16,
-                color: danger ? AppTheme.red : AppTheme.accentB),
+                color: danger ? AppTheme.red : AppTheme.accent),
             const SizedBox(width: 6),
             Text(label,
                 style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: danger ? AppTheme.red : Colors.white70)),
+                    color: danger ? AppTheme.red : AppTheme.textPrimary)),
           ],
         ),
       ),
@@ -331,10 +328,10 @@ class _LayoutEditorScreenState extends State<LayoutEditorScreen> {
         height: 44,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: Colors.white.withOpacity(0.06),
+          color: AppTheme.surfaceAlt,
           border: Border.all(color: AppTheme.hairline),
         ),
-        child: Icon(icon, color: Colors.white, size: 20),
+        child: Icon(icon, color: AppTheme.textPrimary, size: 20),
       ),
     );
   }
@@ -362,15 +359,17 @@ class _LayoutEditorScreenState extends State<LayoutEditorScreen> {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1B2436),
-        title: const Text('Rename'),
+        backgroundColor: AppTheme.surface,
+        title: const Text('Rename',
+            style: TextStyle(color: AppTheme.textPrimary)),
         content: TextField(
           controller: controller,
           autofocus: true,
-          style: const TextStyle(color: Colors.white),
+          style: const TextStyle(color: AppTheme.textPrimary),
           decoration: const InputDecoration(
             hintText: 'Label',
-            border: OutlineInputBorder(),
+            border: OutlineInputBorder(
+                borderSide: BorderSide(color: AppTheme.hairline)),
           ),
         ),
         actions: [
@@ -394,17 +393,16 @@ class _LayoutEditorScreenState extends State<LayoutEditorScreen> {
     final actions = _availableActions();
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF1B2436),
+      backgroundColor: AppTheme.surface,
       builder: (ctx) => SafeArea(
         child: ListView(
           shrinkWrap: true,
           children: actions
               .map((a) => ListTile(
                     title: Text(a,
-                        style: const TextStyle(color: Colors.white)),
+                        style: const TextStyle(color: AppTheme.textPrimary)),
                     trailing: s.action == a
-                        ? const Icon(Icons.check,
-                            color: AppTheme.accentB)
+                        ? const Icon(Icons.check, color: AppTheme.accent)
                         : null,
                     onTap: () {
                       setState(() {
@@ -466,7 +464,7 @@ class _LayoutEditorScreenState extends State<LayoutEditorScreen> {
   Color _colorFor(String kind) {
     switch (kind) {
       case 'stick':
-        return AppTheme.accentA;
+        return AppTheme.accent;
       case 'dpad':
         return AppTheme.green;
       default:

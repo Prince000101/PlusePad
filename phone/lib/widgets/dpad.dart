@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
-/// A classic cross-shaped D-pad. Four digital directions; callbacks report
+/// Classic cross-shaped D-pad. Four digital directions; callbacks report
 /// press/release so the caller can toggle the corresponding DPAD_* flags.
 class DPad extends StatefulWidget {
   final void Function(String direction, bool pressed) onChanged;
@@ -42,7 +42,8 @@ class _DPadState extends State<DPad> {
 
     Widget hitZone(String dir) {
       final isActive = _pressed.contains(dir);
-      final iconColor = isActive ? Colors.white : Colors.white54;
+      final iconColor =
+          isActive ? AppTheme.accent : AppTheme.textSecondary;
       final icon = _dirs.firstWhere((d) => d.$1 == dir).$2;
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -59,9 +60,12 @@ class _DPadState extends State<DPad> {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: isActive
-                  ? AppTheme.accentA.withOpacity(0.5)
+                  ? AppTheme.accentAt(0.22)
                   : Colors.transparent,
-              boxShadow: isActive ? AppTheme.glow(AppTheme.accentB, opacity: 0.6, blur: 14) : null,
+              border: Border.all(
+                color: isActive ? AppTheme.accent : Colors.transparent,
+                width: 1.2,
+              ),
             ),
             alignment: Alignment.center,
             child: Icon(icon, size: arm * 0.5, color: iconColor),
@@ -74,19 +78,12 @@ class _DPadState extends State<DPad> {
       width: widget.size,
       height: widget.size,
       decoration: BoxDecoration(
-        color: const Color(0xFF0A0F20),
+        color: AppTheme.surface,
         shape: BoxShape.circle,
-        border: Border.all(color: AppTheme.hairline, width: 1.5),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.55),
-              blurRadius: 14,
-              offset: const Offset(0, 5)),
-          BoxShadow(
-              color: AppTheme.accentA.withOpacity(pressingAny ? 0.45 : 0.12),
-              blurRadius: pressingAny ? 24 : 14,
-              spreadRadius: pressingAny ? 3 : 0),
-        ],
+        border: Border.all(
+          color: pressingAny ? AppTheme.accent : AppTheme.hairline,
+          width: pressingAny ? 1.4 : 1.2,
+        ),
       ),
       child: Stack(
         children: [
@@ -94,9 +91,9 @@ class _DPadState extends State<DPad> {
             child: CustomPaint(
               size: Size(widget.size, widget.size),
               painter: _CrossPainter(
-                armWidth: arm * 1.05,
-                baseColor: const Color(0xFF1A2337),
-                litColor: AppTheme.accentB,
+                armWidth: arm * 1.08,
+                baseColor: AppTheme.surfaceBright,
+                litColor: AppTheme.accent,
                 pressed: _pressed,
               ),
             ),
@@ -110,12 +107,12 @@ class _DPadState extends State<DPad> {
               width: arm * 0.5,
               height: arm * 0.5,
               decoration: BoxDecoration(
-                color: const Color(0xFF1A2337),
+                color: AppTheme.surfaceBright,
                 shape: BoxShape.circle,
-                border: Border.all(color: AppTheme.accentA.withOpacity(0.6), width: 1.2),
-                boxShadow: pressingAny
-                    ? AppTheme.glow(AppTheme.accentB, opacity: 0.5, blur: 12)
-                    : null,
+                border: Border.all(
+                  color: pressingAny ? AppTheme.accent : AppTheme.hairline,
+                  width: 1.2,
+                ),
               ),
             ),
           ),
@@ -143,42 +140,32 @@ class _CrossPainter extends CustomPainter {
     final c = size.width / 2;
     const edgeInset = 3.0;
 
-    // Vertical arm
-    Rect vRect =
-        Rect.fromLTWH(c - armWidth / 2, edgeInset, armWidth, size.height - edgeInset * 2);
-    // Horizontal arm
-    Rect hRect =
-        Rect.fromLTWH(edgeInset, c - armWidth / 2, size.width - edgeInset * 2, armWidth);
+    final vRect = (
+      Rect.fromLTWH(c - armWidth / 2, edgeInset, armWidth, size.height - edgeInset * 2),
+      pressed.contains('DPAD_UP') || pressed.contains('DPAD_DOWN'),
+    );
+    final hRect = (
+      Rect.fromLTWH(edgeInset, c - armWidth / 2, size.width - edgeInset * 2, armWidth),
+      pressed.contains('DPAD_LEFT') || pressed.contains('DPAD_RIGHT'),
+    );
 
-    bool vActive = pressed.contains('DPAD_UP') || pressed.contains('DPAD_DOWN');
-    bool hActive = pressed.contains('DPAD_LEFT') || pressed.contains('DPAD_RIGHT');
-
-    _drawArm(canvas, vRect, vActive);
-    _drawArm(canvas, hRect, hActive);
+    _drawArm(canvas, vRect);
+    _drawArm(canvas, hRect);
   }
 
-  void _drawArm(Canvas canvas, Rect rect, bool active) {
+  void _drawArm(Canvas canvas, (Rect, bool) arm) {
+    final (rect, active) = arm;
     final paint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: active
-            ? [litColor, Color.lerp(litColor, Colors.white, 0.2)!]
-            : [const Color(0xFF242F47), baseColor],
-      ).createShader(rect)
+      ..color = active ? litColor : baseColor
       ..style = PaintingStyle.fill;
-
-    // beveled arm with rounded ends
     canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(7)), paint);
 
-    // top gloss
-    final gloss = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Colors.white12, Colors.transparent],
-      ).createShader(rect);
-    canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(7)), gloss);
+    final rim = Paint()
+      ..color = active ? Color.lerp(litColor, Colors.white, 0.3)! : AppTheme.hairline
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(rect.deflate(0.75), const Radius.circular(7)), rim);
   }
 
   @override

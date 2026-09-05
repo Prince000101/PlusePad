@@ -64,6 +64,8 @@ class PulsePadServer:
                  tcp_port=TCP_PORT, udp_port=UDP_PORT,
                  discovery_port=DISCOVERY_PORT,
                  on_haptic=None,
+                 on_state=None,
+                 on_key=None,
                  name="PulsePad"):
         self.gamepad = gamepad
         self.tcp_port = tcp_port
@@ -72,6 +74,8 @@ class PulsePadServer:
         self.name = name
 
         self._on_haptic = on_haptic
+        self._on_state = on_state
+        self._on_key = on_key
 
         self.running = False
         self._tcp_sock = None
@@ -184,6 +188,22 @@ class PulsePadServer:
                 del self._udp_peers[a]
             udp = len(self._udp_peers)
         return tcp, udp
+
+    @property
+    def on_state(self):
+        return self._on_state
+
+    @on_state.setter
+    def on_state(self, cb):
+        self._on_state = cb
+
+    @property
+    def on_key(self):
+        return self._on_key
+
+    @on_key.setter
+    def on_key(self, cb):
+        self._on_key = cb
 
     # ------------------------------------------------------------------ #
     # UDP: pure streaming. Every datagram is a full controller snapshot.
@@ -306,6 +326,11 @@ class PulsePadServer:
         except ValueError:
             return
         self.gamepad.apply_gamepad(btn_lo, btn_hi, lx, ly, rx, ry, l2, r2)
+        if self._on_state:
+            try:
+                self._on_state(btn_lo, btn_hi, lx, ly, rx, ry, l2, r2)
+            except Exception:
+                pass
 
     def _apply_mouse(self, data):
         try:
@@ -320,6 +345,11 @@ class PulsePadServer:
         except ValueError:
             return
         self.gamepad.apply_key(keycode, bool(pressed))
+        if self._on_key:
+            try:
+                self._on_key(keycode, bool(pressed))
+            except Exception:
+                pass
 
     def _handle_ping(self, data, addr, via_udp):
         try:

@@ -10,6 +10,9 @@ venv/
 build/
 dist/
 
+# Released binaries (git stores source, not artifacts)
+release/
+
 # Flutter / Dart (phone app)
 phone/build/
 phone/.dart_tool/

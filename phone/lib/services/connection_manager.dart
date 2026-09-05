@@ -64,6 +64,9 @@ class ConnectionManager extends ChangeNotifier {
   double deadZone = 0.12;
   double sensitivity = 1.0;
 
+  /// Buzz + click feedback when controller buttons/keys are pressed.
+  bool buttonFeedback = true;
+
   // Inbound
   void Function(int durationMs, double intensity, int motor)? onHaptic;
 
@@ -441,6 +444,17 @@ class ConnectionManager extends ChangeNotifier {
     _reconnectTimer = Timer(const Duration(seconds: 2), () {
       if (_autoReconnect) connect();
     });
+  }
+
+  bool get autoReconnect => _autoReconnect;
+
+  set autoReconnect(bool v) {
+    _autoReconnect = v;
+    if (v) {
+      _scheduleReconnect();
+    } else {
+      _reconnectTimer?.cancel();
+    }
   }
 
   void enableAutoReconnect() {

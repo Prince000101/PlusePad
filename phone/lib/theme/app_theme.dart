@@ -1,121 +1,149 @@
 import 'package:flutter/material.dart';
 
-/// Central design tokens for the KDE-Connect-style glassy/dark look.
+/// OLED-minimal design system — the only identity PulsePad needs.
+///
+/// Pure black canvas, flat grey surfaces held apart by hairlines instead of
+/// shadows, high-contrast type, and a single restrained accent reserved for
+/// *meaningful* states: pressed, active, connected.
 class AppTheme {
-  // Background
-  static const Color bgTop = Color(0xFF12182B);
-  static const Color bgBottom = Color(0xFF0B1120);
+  AppTheme._();
 
-  // Accent gradient
-  static const Color accentA = Color(0xFF6366F1);
-  static const Color accentB = Color(0xFF818CF8);
+  // ---- Canvas ----
+  static const Color bg = Color(0xFF000000);
 
-  // Surface / frost
-  static const Color frost = Color(0x0DFFFFFF); // ~5% white glass
-  static const Color frostStrong = Color(0x1AFFFFFF); // ~10% white glass
-  static const Color hairline = Color(0x26FFFFFF); // faint glass edge
+  // ---- Surfaces (flat; separated by hairlines, not shadows) ----
+  static const Color surface = Color(0xFF111113);
+  static const Color surfaceAlt = Color(0xFF1A1A20);
+  static const Color surfaceBright = Color(0xFF24242C);
 
-  static const Color green = Color(0xFF22C55E);
-  static const Color amber = Color(0xFFF59E0B);
-  static const Color red = Color(0xFFEF4444);
+  // ---- Lines ----
+  static const Color hairline = Color(0xFF26262E);
+  static const Color hairlineSoft = Color(0xFF19191F);
 
-  static LinearGradient get bgGradient => const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [bgTop, bgBottom],
-      );
+  // ---- Type ----
+  static const Color textPrimary = Color(0xFFFFFFFF);
+  static const Color textSecondary = Color(0xFF9A9AA5);
+  static const Color textMuted = Color(0xFF5A5A66);
 
-  static LinearGradient get accentGradient =>
-      const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [accentB, accentA]);
+  // ---- The one accent ----
+  static const Color accent = Color(0xFF6EA8FE);
+  static const Color accentDeep = Color(0xFF2B5BD7);
 
-  /// A frosted glass surface (rounded rectangle) with a soft drop shadow.
-  static BoxDecoration glass({
-    double radius = 16,
-    Color? tint,
-    double blur = 18,
+  // ---- Functional status (small doses, never decorative) ----
+  static const Color green = Color(0xFF2ECC71);
+  static const Color amber = Color(0xFFF5A623);
+  static const Color red = Color(0xFFE74C3C);
+
+  // ---- Geometry / rhythm ----
+  static const double touchMin = 48.0;
+  static const double radius = 16.0;
+  static const double radiusSmall = 10.0;
+  static const double spacing = 12.0;
+
+  static Color accentAt(double alpha) => Color.fromRGBO(112, 165, 255, alpha);
+  static Color whiteAt(double alpha) => Color.fromRGBO(255, 255, 255, alpha);
+
+  // ---- Composite decorations ----
+
+  /// Flat solid card. Elevation is implied by the hairline, never by shadow.
+  static BoxDecoration card({
+    double radius = AppTheme.radius,
+    Color? color,
+    Color? border,
   }) {
     return BoxDecoration(
+      color: color ?? surface,
       borderRadius: BorderRadius.circular(radius),
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          (tint ?? Colors.white).withOpacity(0.09),
-          (tint ?? Colors.white).withOpacity(0.04),
-        ],
-      ),
-      border: Border.all(color: hairline, width: 1),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.45),
-          blurRadius: blur,
-          offset: const Offset(0, 8),
-        ),
-        BoxShadow(
-          color: accentA.withOpacity(0.06),
-          blurRadius: blur,
-          offset: const Offset(0, 2),
-        ),
-      ],
+      border: Border.all(color: border ?? hairline),
     );
   }
 
-  /// A circular frosted glass surface (for round buttons).
-  static BoxDecoration glassShape({
-    Color? tint,
-    double blur = 14,
+  /// Accent-highlighted card for active/selected/success states.
+  static BoxDecoration cardActive({
+    double radius = AppTheme.radius,
+    double alpha = 0.14,
   }) {
     return BoxDecoration(
-      shape: BoxShape.circle,
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          (tint ?? Colors.white).withOpacity(0.10),
-          (tint ?? Colors.white).withOpacity(0.04),
-        ],
-      ),
-      border: Border.all(color: hairline, width: 1),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.45),
-          blurRadius: blur,
-          offset: const Offset(0, 6),
-        ),
-      ],
+      color: accentAt(alpha),
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(color: accent, width: 1.2),
     );
   }
 
-  /// Ambient glow shadow for active controls.
-  static List<BoxShadow> glow(Color color, {double opacity = 0.45, double blur = 18}) {
-    return [
-      BoxShadow(
-        color: color.withOpacity(opacity),
-        blurRadius: blur,
-        spreadRadius: 1,
-        offset: Offset.zero,
-      ),
-    ];
+  /// Flat control pad (darker than a card so controls read against surfaces).
+  static BoxDecoration pad({
+    double radius = AppTheme.radiusSmall,
+    Color? color,
+    Color? border,
+  }) {
+    return BoxDecoration(
+      color: color ?? surfaceAlt,
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(color: border ?? hairline),
+    );
   }
+
+  /// Pressed control.
+  static BoxDecoration padPressed({
+    double radius = AppTheme.radiusSmall,
+  }) {
+    return BoxDecoration(
+      color: accentAt(0.16),
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(color: accent, width: 1.4),
+    );
+  }
+
+  /// Active (toggle-on) control.
+  static BoxDecoration padActive({
+    double radius = AppTheme.radiusSmall,
+  }) {
+    return BoxDecoration(
+      color: accentAt(0.10),
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(color: accent, width: 1.2),
+    );
+  }
+
+  // ---- Type helpers ----
+  static const TextStyle label = TextStyle(
+    color: textSecondary,
+    fontSize: 11,
+    fontWeight: FontWeight.w700,
+    letterSpacing: 1.6,
+  );
+
+  static const TextStyle caption = TextStyle(
+    color: textMuted,
+    fontSize: 12,
+  );
+
+  static const TextStyle body = TextStyle(
+    color: textPrimary,
+    fontSize: 15,
+  );
+
+  static const TextStyle bodySecondary = TextStyle(
+    color: textSecondary,
+    fontSize: 14,
+  );
+
+  static const TextStyle display = TextStyle(
+    color: textPrimary,
+    fontSize: 28,
+    fontWeight: FontWeight.w800,
+    letterSpacing: 1.2,
+  );
 }
 
-/// A full-screen background painted with the brand gradient. Drop behind the
-/// body of every Scaffold for a seamless look.
+/// Pure-black stage for every screen; substantial children draw themselves on
+/// top with their own surfaces, nothing else competes.
 class Background extends StatelessWidget {
   const Background({super.key, this.child});
   final Widget? child;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [AppTheme.bgTop, AppTheme.bgBottom],
-        ),
-      ),
-      child: child,
-    );
+    return Container(color: AppTheme.bg, child: child);
   }
 }

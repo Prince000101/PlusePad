@@ -14,7 +14,7 @@ void main() async {
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: Color(0xFF0F172A),
+      systemNavigationBarColor: AppTheme.bg,
       systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
@@ -40,11 +40,11 @@ class PulsePadApp extends StatelessWidget {
         theme: ThemeData(
           useMaterial3: true,
           brightness: Brightness.dark,
-          scaffoldBackgroundColor: const Color(0xFF0F172A),
+          scaffoldBackgroundColor: AppTheme.bg,
           colorScheme: const ColorScheme.dark(
-            primary: AppTheme.accentA,
-            secondary: AppTheme.accentB,
-            surface: Color(0xFF1E293B),
+            primary: AppTheme.accent,
+            secondary: AppTheme.accent,
+            surface: AppTheme.surface,
             error: AppTheme.red,
           ),
           fontFamily: 'Roboto',

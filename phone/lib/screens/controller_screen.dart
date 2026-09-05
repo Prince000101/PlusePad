@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -11,13 +13,16 @@ import '../theme/app_theme.dart';
 import '../widgets/analog_stick.dart';
 import '../widgets/action_buttons.dart';
 import '../widgets/dpad.dart';
+import '../widgets/gamepad_button.dart';
+import '../layout/layout_engine.dart';
 import 'layout_editor_screen.dart';
 import 'settings_screen.dart';
 
-/// Full-screen controller designed for a phone held LANDSCAPE (like a Steam
-/// Deck / Steam Controller). It auto-rotates to landscape on entry, runs
-/// full-bleed (maximised controls, no task/status bar) and hides all chrome
-/// behind a single small floating menu button.
+/// Full-screen controller for a phone held LANDSCAPE. Every preset is rendered
+/// inside the guaranteed-disjoint zones produced by [LayoutPanel], so controls
+/// can never overlap and always clear the notches/nav bars. A single full-width
+/// shoulder strip spans the top; the menu + latency sit in a chrome band
+/// beneath it; the in-game menu is a scrollable bottom sheet.
 class ControllerScreen extends StatefulWidget {
   const ControllerScreen({super.key});
 
@@ -28,7 +33,6 @@ class ControllerScreen extends StatefulWidget {
 class _ControllerScreenState extends State<ControllerScreen>
     with TickerProviderStateMixin {
   ControllerLayout _currentLayout = ControllerLayout.gamepad;
-  bool _dpadMode = false;
   bool _menuOpen = false;
   int _mouseButtons = 0;
   Offset? _touchLast;
@@ -36,7 +40,6 @@ class _ControllerScreenState extends State<ControllerScreen>
   @override
   void initState() {
     super.initState();
-    // Landscape-first: lock to horizontal and go immersive (no status/nav bar).
     SystemChrome.setPreferredOrientations(
         [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
@@ -63,20 +66,44 @@ class _ControllerScreenState extends State<ControllerScreen>
 
   ConnectionManager _cm() => context.read<ConnectionManager>();
 
+  LayoutPanel get _panel {
+    final vp = MediaQuery.of(context).viewPadding;
+    return LayoutPanel(
+      size: MediaQuery.of(context).size,
+      safeTop: vp.top,
+      safeBottom: vp.bottom,
+      safeLeft: vp.left,
+      safeRight: vp.right,
+    );
+  }
+
   // ------------------------------- inputs ------------------------------ //
+  /// Subtle tick + buzz on press-down, so every button press is felt/heard.
+  /// Gated by the Settings "Button Feedback" toggle. Down-edge only (no flood
+  /// while dragging sticks or holding triggers).
+  void _feedback() {
+    if (!_cm().buttonFeedback) return;
+    HapticFeedback.lightImpact();
+    SystemSound.play(SystemSoundType.click);
+  }
+
   void _setButton(String name, bool pressed) {
     final cm = _cm();
     final c = cm.controller;
     var changed = c.setButton(name, pressed);
     if (name == 'L2' || name == 'R2') {
-      // Bumpers are digital taps, but also drive the analog trigger axis so
-      // analog-aware games see the full 0..255 range on ABS_Z/ABS_RZ.
       changed = c.setTrigger(name, pressed ? 1.0 : 0.0) || changed;
     }
-    if (changed) cm.pushState();
+    if (changed) {
+      if (pressed) _feedback();
+      cm.pushState();
+    }
   }
 
-  void _sendKey(String name, bool pressed) => _cm().sendKey(name, pressed);
+  void _sendKey(String name, bool pressed) {
+    if (pressed) _feedback();
+    _cm().sendKey(name, pressed);
+  }
 
   void _setAxis(String name, double v) {
     final cm = _cm();
@@ -94,28 +121,20 @@ class _ControllerScreenState extends State<ControllerScreen>
   // ------------------------------- build ------------------------------- //
   @override
   Widget build(BuildContext context) {
+    final p = _panel;
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: AppTheme.bg,
       body: Background(
-        // Full-bleed: no SafeArea so the controls fill the whole screen.
         child: Stack(
           children: [
             SizedBox.expand(child: _buildCurrentLayout()),
-            // Overlay: menu button + latency.
-            Positioned(
-              top: 8,
-              child: SizedBox(
-                width: MediaQuery.of(context).size.width,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _buildMenuButton(),
-                    const SizedBox(width: 8),
-                    _buildLatencyPill(),
-                  ],
-                ),
-              ),
-            ),
+            // Full-width shoulder strip along the very top edge.
+            _inRect(p.shoulder, _buildShoulderStrip(p)),
+            // Chrome band: menu + latency, centred under the strip.
+            _inRect(
+                Rect.fromLTWH(
+                    0, p.shoulder.bottom, p.size.width, 56),
+                _buildChrome()),
             if (_menuOpen) Positioned.fill(child: _buildMenuOverlay()),
           ],
         ),
@@ -123,199 +142,55 @@ class _ControllerScreenState extends State<ControllerScreen>
     );
   }
 
+  Widget _inRect(Rect r, Widget child) => Positioned(
+      left: r.left, top: r.top, width: r.width, height: r.height, child: child);
+
   Widget _buildCurrentLayout() {
     switch (_currentLayout) {
-      case ControllerLayout.psp:
-        return _buildPSPLayout();
-      case ControllerLayout.ps5:
-        return _buildPS5Layout();
       case ControllerLayout.mouse:
         return _buildMouseLayout();
       case ControllerLayout.keyboard:
         return _buildKeyboardLayout();
-      case ControllerLayout.simple:
-        return _buildSimpleLayout();
-      case ControllerLayout.pro:
-        return _buildProLayout();
       case ControllerLayout.custom:
         return _buildCustomLayout();
       case ControllerLayout.gamepad:
       default:
-        return _buildSteamDeckLayout();
+        return _buildGamepadLayout();
     }
   }
 
-  // ---------------- Steam Deck-inspired landscape gamepad ---------------- //
-  // Left grip: D-pad (top) + left stick (below). Right grip: ABXY (top) +
-  // right stick (below). Symmetric like the Steam Deck, full-bleed.
-  Widget _buildSteamDeckLayout() {
-    // Half the width for each grip; controls sized to available space.
-    final media = MediaQuery.of(context).size;
-    final topControl = (media.height * 0.44).clamp(90.0, 220.0);
-    final bottomControl = (media.height * 0.38).clamp(80.0, 190.0);
-
-    return Stack(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(8, 88, 8, 8),
-          child: Row(
-            children: [
-              // ---- Left grip ----
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _dpadMode
-                        ? DPad(onChanged: _dpad, size: topControl)
-                        : AnalogStick(
-                            size: topControl,
-                            onChanged: (x, y) {
-                              _setAxis('LX', x);
-                              _setAxis('LY', y);
-                            }),
-                    const Spacer(),
-                    AnalogStick(
-                      size: bottomControl,
-                      onChanged: (x, y) {
-                        _setAxis('LX', x);
-                        _setAxis('LY', y);
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              // ---- Center controls ----
-              SizedBox(
-                width: 56,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _pill('SELECT'),
-                    const SizedBox(height: 14),
-                    _pill('START'),
-                  ],
-                ),
-              ),
-              // ---- Right grip ----
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Center(
-                      child: ActionButtons(
-                        onPressed: (b) => _setButton(b, true),
-                        onReleased: (b) => _setButton(b, false),
-                      ),
-                    ),
-                    const Spacer(),
-                    AnalogStick(
-                      size: bottomControl,
-                      onChanged: (x, y) {
-                        _setAxis('RX', x);
-                        _setAxis('RY', y);
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        // Steam-Deck style bumpers sit along the top edge of each grip.
-        Positioned(top: 8, left: 16,
-            child: _cornerBumpers(const ['L1', 'L2'], left: true)),
-        Positioned(top: 8, right: 16,
-            child: _cornerBumpers(const ['R2', 'R1'], left: false)),
-      ],
-    );
-  }
-
-  /// A compact pair of shoulder bumpers for one grip corner. Steam-style:
-  /// large targets with tactile press feedback.
-  Widget _cornerBumpers(List<String> labels, {required bool left}) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: labels.map((l) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 3),
-          child: _Bumper(label: l, onChanged: _setButton),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _pill(String label) {
-    return _PillButton(label: label, onChanged: _setButton);
-  }
-
-  // ---------------------------- Simple layout -------------------------- //
-  // Big, few controls — best for casual users. Just two sticks, a D-pad and
-  // the face buttons, sized large and placed for easy thumbs.
-  Widget _buildSimpleLayout() {
-    final media = MediaQuery.of(context).size;
-    final big = (media.height * 0.42).clamp(90.0, 200.0);
-    final face = (media.height * 0.3).clamp(70.0, 150.0);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 64, 8, 12),
-      child: Stack(
+  // --------------------------- shoulder strip -------------------------- //
+  Widget _buildShoulderStrip(LayoutPanel p) {
+    return Container(
+      alignment: Alignment.center,
+      decoration: const BoxDecoration(
+        color: AppTheme.surface,
+        border: Border(bottom: BorderSide(color: AppTheme.hairline)),
+      ),
+      child: Row(
         children: [
-          // Left stick (large).
-          Positioned(
-            left: media.width * 0.02,
-            top: 0,
-            child: AnalogStick(
-              size: big,
-              onChanged: (x, y) {
-                _setAxis('LX', x);
-                _setAxis('LY', y);
-              },
-            ),
-          ),
-          // Right side: big ABXY cluster.
-          Positioned(
-            right: media.width * 0.02,
-            top: 0,
-            child: ClipOval(
-              child: SizedBox(
-                width: face + 40,
-                height: face + 40,
-                child: Center(
-                  child: ActionButtons(
-                    onPressed: (b) => _setButton(b, true),
-                    onReleased: (b) => _setButton(b, false),
-                  ),
-                ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _bumper('L2'),
+                  _bumper('L1'),
+                ],
               ),
             ),
           ),
-          // D-pad bottom-left.
-          Positioned(
-            left: media.width * 0.08,
-            bottom: 4,
-            child: DPad(onChanged: _dpad, size: media.height * 0.32),
-          ),
-          // Right stick bottom-right.
-          Positioned(
-            right: media.width * 0.06,
-            bottom: 4,
-            child: AnalogStick(
-              size: media.height * 0.36,
-              onChanged: (x, y) {
-                _setAxis('RX', x);
-                _setAxis('RY', y);
-              },
-            ),
-          ),
-          // SELECT / START mini group centre.
-          Positioned(
-            right: media.width * 0.50,
-            bottom: media.height * 0.02,
-            child: Row(
-              children: [
-                _pill('SELECT'),
-                const SizedBox(width: 10),
-                _pill('START'),
-              ],
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _bumper('R1'),
+                  _bumper('R2'),
+                ],
+              ),
             ),
           ),
         ],
@@ -323,94 +198,137 @@ class _ControllerScreenState extends State<ControllerScreen>
     );
   }
 
-  // ------------------------------ Pro layout --------------------------- //
-  // Everything, laid out like a premium pad: two sticks, D-pad, ABXY, L/R1/L2
-  // bumpers and triggers, plus L3/R3 and extra shoulders.
-  Widget _buildProLayout() {
-    final media = MediaQuery.of(context).size;
-    final grip = (media.height * 0.34).clamp(80.0, 165.0);
+  Widget _bumper(String label) {
+    return GamepadButton(
+      label: label,
+      width: 76,
+      height: 40,
+      fontSize: 12,
+      onDown: () => _setButton(label, true),
+      onUp: () => _setButton(label, false),
+    );
+  }
+
+  Widget _buildChrome() {
+    return Center(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GamepadButton(
+            label: '',
+            icon: _menuOpen ? Icons.close : Icons.menu,
+            width: 48,
+            height: 48,
+            round: true,
+            active: _menuOpen,
+            onTap: () => setState(() => _menuOpen = !_menuOpen),
+          ),
+          const SizedBox(width: 10),
+          _buildLatencyPill(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLatencyPill() {
+    return Consumer<ConnectionManager>(
+      builder: (context, manager, _) => Container(
+        height: 36,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: AppTheme.card(
+            radius: 999, color: AppTheme.surface, border: AppTheme.hairline),
+        child: Row(
+          children: [
+            Icon(manager.mode == ConnectionMode.usb ? Icons.usb : Icons.wifi,
+                size: 14, color: AppTheme.green),
+            const SizedBox(width: 6),
+            Text('${manager.latency}ms',
+                style: const TextStyle(
+                    fontSize: 12,
+                    color: AppTheme.green,
+                    fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ----------------------------- Gamepad ------------------------------- //
+  // Both grip positions always visible: left grip = D-pad (top) + left stick
+  // (bottom); right grip = ABXY (top) + right stick (bottom); SELECT/START in
+  // the central column.
+  Widget _buildGamepadLayout() {
+    return _dualGripLayout();
+  }
+
+  /// Shared grip layout engine for gamepad / ps5 / simple (fraction-tuned).
+  Widget _dualGripLayout({double topFrac = 0.56, double botFrac = 0.46}) {
+    final p = _panel;
+    final dz = LayoutPanel.fit(p.gripLeft, topFrac);
+    final sz = LayoutPanel.fit(p.gripLeft, botFrac);
+    final face = LayoutPanel.fit(p.gripRight, topFrac);
+    final dead = _cm().deadZone;
+
+    Widget leftStick() => AnalogStick(
+          size: sz,
+          deadZone: dead,
+          onChanged: (x, y) {
+            _setAxis('LX', x);
+            _setAxis('LY', y);
+          },
+        );
+    Widget rightStick() => AnalogStick(
+          size: sz,
+          deadZone: dead,
+          onChanged: (x, y) {
+            _setAxis('RX', x);
+            _setAxis('RY', y);
+          },
+        );
 
     return Stack(
       children: [
-        // Top bumpers + triggers.
-        Positioned(top: 8, left: 16, child: _cornerBumpers(const ['L1', 'L2'], left: true)),
-        Positioned(top: 8, right: 16, child: _cornerBumpers(const ['R2', 'R1'], left: false)),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(8, 88, 8, 24),
-          child: Row(
-            children: [
-              // Left grip: D-pad (top) + left stick (below).
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _dpadMode
-                        ? DPad(onChanged: _dpad, size: grip)
-                        : AnalogStick(
-                            size: grip,
-                            onChanged: (x, y) {
-                              _setAxis('LX', x);
-                              _setAxis('LY', y);
-                            }),
-                    const Spacer(),
-                    AnalogStick(
-                      size: grip,
-                      onChanged: (x, y) {
-                        _setAxis('LX', x);
-                        _setAxis('LY', y);
-                      },
-                    ),
-                  ],
-                ),
+        _inRect(p.gripLeft,
+            Align(alignment: Alignment.topCenter, child: DPad(onChanged: _dpad, size: dz))),
+        _inRect(
+            p.gripLeft, Align(alignment: Alignment.bottomCenter, child: leftStick())),
+        _inRect(
+            p.gripRight,
+            Align(
+                alignment: Alignment.topCenter,
+                child: ActionButtons(
+                  size: face,
+                  ps2: true,
+                  onPressed: (b) => _setButton(b, true),
+                  onReleased: (b) => _setButton(b, false),
+                ))),
+        _inRect(
+            p.gripRight, Align(alignment: Alignment.bottomCenter, child: rightStick())),
+        _inRect(
+            p.center,
+            Align(
+              alignment: Alignment.center,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [_pill('SELECT'), const SizedBox(height: 10), _pill('START')],
               ),
-              // Centre: SELECT / START + L3 / R3.
-              SizedBox(
-                width: 64,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _pill('L3'),
-                    const SizedBox(height: 10),
-                    _pill('SELECT'),
-                    const SizedBox(height: 10),
-                    _pill('START'),
-                    const SizedBox(height: 10),
-                    _pill('R3'),
-                  ],
-                ),
-              ),
-              // Right grip: face (top) + right stick (below).
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Center(
-                      child: ActionButtons(
-                        onPressed: (b) => _setButton(b, true),
-                        onReleased: (b) => _setButton(b, false),
-                      ),
-                    ),
-                    const Spacer(),
-                    AnalogStick(
-                      size: grip,
-                      onChanged: (x, y) {
-                        _setAxis('RX', x);
-                        _setAxis('RY', y);
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+            )),
       ],
     );
   }
 
-  // --------------------------- Custom layout --------------------------- //
-  // Renders the user's saved custom layout (from the visual editor). Controls
-  // are positioned/sized by normalised fractions of the screen.
+  Widget _pill(String label) {
+    return GamepadButton(
+      label: label,
+      width: 52,
+      height: 38,
+      fontSize: 10,
+      onDown: () => _setButton(label, true),
+      onUp: () => _setButton(label, false),
+    );
+  }
+
+  // ----------------------------- Custom -------------------------------- //
   Widget _buildCustomLayout() {
     final layout = context.watch<LayoutStore>().layout;
     if (layout == null || layout.slots.isEmpty) {
@@ -418,26 +336,17 @@ class _ControllerScreenState extends State<ControllerScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.add_circle_outline,
-                size: 48, color: AppTheme.accentB),
+            const Icon(Icons.add_circle_outline, size: 48, color: AppTheme.textMuted),
             const SizedBox(height: 12),
-            Text('No custom layout yet',
-                style: TextStyle(color: Colors.white.withOpacity(0.6))),
-            const SizedBox(height: 12),
-            GestureDetector(
+            const Text('No custom layout yet', style: AppTheme.bodySecondary),
+            const SizedBox(height: 16),
+            GamepadButton(
+              label: 'OPEN EDITOR',
+              width: 168,
+              height: 48,
+              highlight: true,
+              fontSize: 12,
               onTap: _openEditor,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 18, vertical: 12),
-                decoration: BoxDecoration(
-                  gradient: AppTheme.accentGradient,
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: AppTheme.glow(AppTheme.accentA, opacity: 0.4),
-                ),
-                child: const Text('Open Editor',
-                    style: TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.w700)),
-              ),
             ),
           ],
         ),
@@ -468,14 +377,15 @@ class _ControllerScreenState extends State<ControllerScreen>
       case 'stick':
         final isRight = s.action.contains('R') && !s.action.contains('LX');
         return AnalogStick(
-          size: 100,
+          size: 110,
+          deadZone: _cm().deadZone,
           onChanged: (x, y) {
             _setAxis(isRight ? 'RX' : 'LX', x);
             _setAxis(isRight ? 'RY' : 'LY', y);
           },
         );
       case 'dpad':
-        return DPad(onChanged: _dpad);
+        return DPad(onChanged: _dpad, size: 120);
       default:
         final action = s.action.isEmpty ? s.label : s.action;
         return _customButton(s.label, action);
@@ -483,28 +393,13 @@ class _ControllerScreenState extends State<ControllerScreen>
   }
 
   Widget _customButton(String label, String action) {
-    return GestureDetector(
-      onTapDown: (_) => _setButton(action, true),
-      onTapUp: (_) => _setButton(action, false),
-      onTapCancel: () => _setButton(action, false),
-      child: Container(
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0x337F86FD), Color(0x886366F1)],
-          ),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.hairline, width: 1.2),
-          boxShadow: AppTheme.glow(AppTheme.accentA, opacity: 0.25),
-        ),
-        child: Text(label,
-            style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-                color: Colors.white)),
-      ),
+    return GamepadButton(
+      label: label,
+      width: double.infinity,
+      height: double.infinity,
+      fontSize: 14,
+      onDown: () => _setButton(action, true),
+      onUp: () => _setButton(action, false),
     );
   }
 
@@ -535,176 +430,79 @@ class _ControllerScreenState extends State<ControllerScreen>
     ]);
   }
 
-  // ---------------------------- PSP layout ---------------------------- //
-  Widget _buildPSPLayout() {
-    final media = MediaQuery.of(context).size;
-    final ctrl = (media.height * 0.42).clamp(90.0, 200.0);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 64, 8, 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                DPad(onChanged: _dpad, size: ctrl),
-                const SizedBox(height: 14),
-                _pill('L3'),
-              ],
-            ),
-          ),
-          SizedBox(
-            width: 56,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _pill('SELECT'),
-                const SizedBox(height: 14),
-                _pill('START'),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ActionButtons(
-                  onPressed: (b) => _setButton(b, true),
-                  onReleased: (b) => _setButton(b, false),
-                ),
-                const SizedBox(height: 14),
-                AnalogStick(
-                  size: (media.height * 0.3).clamp(70.0, 150.0),
-                  onChanged: (x, y) {
-                    _setAxis('RX', x);
-                    _setAxis('RY', y);
-                  },
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ---------------------------- PS5 layout ---------------------------- //
-  Widget _buildPS5Layout() {
-    final media = MediaQuery.of(context).size;
-    final ctrl = (media.height * 0.4).clamp(85.0, 190.0);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 64, 8, 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _dpadMode
-                    ? DPad(onChanged: _dpad, size: ctrl)
-                    : AnalogStick(
-                        size: ctrl,
-                        onChanged: (x, y) {
-                          _setAxis('LX', x);
-                          _setAxis('LY', y);
-                        }),
-                const SizedBox(height: 14),
-                AnalogStick(
-                  size: ctrl * 0.8,
-                  onChanged: (x, y) {
-                    _setAxis('LX', x);
-                    _setAxis('LY', y);
-                  },
-                ),
-              ],
-            ),
-          ),
-          SizedBox(
-            width: 56,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _pill('SELECT'),
-                const SizedBox(height: 14),
-                _pill('START'),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ActionButtons(
-                  onPressed: (b) => _setButton(b, true),
-                  onReleased: (b) => _setButton(b, false),
-                ),
-                const SizedBox(height: 14),
-                AnalogStick(
-                  size: ctrl * 0.8,
-                  onChanged: (x, y) {
-                    _setAxis('RX', x);
-                    _setAxis('RY', y);
-                  },
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --------------------------- Mouse layout --------------------------- //
+  // ------------------------------ Mouse -------------------------------- //
   Widget _buildMouseLayout() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 64, 8, 24),
-      child: Column(
-        children: [
-          Expanded(
-            child: GestureDetector(
-              onPanStart: (d) {
-                setState(() => _mouseButtons = _mouseButtons | 0x01);
-                _touchLast = d.localPosition;
-                _cm().sendMouse(0, 0, _mouseButtons);
-              },
-              onPanUpdate: (d) {
-                final last = _touchLast;
-                _touchLast = d.localPosition;
-                if (last != null) _sendMouseDelta(d.localPosition - last);
-              },
-              onPanEnd: (_) {
-                setState(() => _mouseButtons = _mouseButtons & ~0x01);
-                _touchLast = null;
-                _cm().sendMouse(0, 0, _mouseButtons);
-              },
-              onPanCancel: () {
-                setState(() => _mouseButtons = _mouseButtons & ~0x01);
-                _touchLast = null;
-                _cm().sendMouse(0, 0, _mouseButtons);
-              },
-              child: Container(
-                decoration: AppTheme.glass(radius: 24),
-                child: const Center(
-                  child: Text('Touchpad Area',
-                      style: TextStyle(color: Colors.white54)),
-                ),
+    final p = _panel;
+    final f = p.field;
+    const rowH = 48.0;
+    const pad = 10.0;
+    final touch = Rect.fromLTRB(
+        f.left, f.top, f.right, f.bottom - rowH - pad);
+
+    return Stack(
+      children: [
+        _inRect(touch, _buildTouchpad()),
+        _inRect(
+            Rect.fromLTRB(f.left, touch.bottom + pad, f.right, f.bottom),
+            Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _mouseButton('LMB', 0x01),
+                  const SizedBox(width: 12),
+                  _mouseButton('RMB', 0x02),
+                ],
               ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _pill('SELECT'),
-              const SizedBox(width: 16),
-              _pill('START'),
-              const SizedBox(width: 16),
-              _mouseButtonPill('LMB', 1),
-              const SizedBox(width: 16),
-              _mouseButtonPill('RMB', 2),
-            ],
-          ),
-        ],
+            )),
+      ],
+    );
+  }
+
+  Widget _mouseButton(String label, int bit) {
+    final active = (_mouseButtons & bit) != 0;
+    return GamepadButton(
+      label: label,
+      width: 88,
+      height: 40,
+      fontSize: 11,
+      active: active,
+      onTap: () {
+        setState(() => _mouseButtons ^= bit);
+        if ((_mouseButtons & bit) != 0) _feedback();
+        _cm().sendMouse(0, 0, _mouseButtons);
+      },
+    );
+  }
+
+  Widget _buildTouchpad() {
+    return GestureDetector(
+      onPanStart: (d) {
+        setState(() => _mouseButtons = _mouseButtons | 0x01);
+        _touchLast = d.localPosition;
+        _feedback();
+        _cm().sendMouse(0, 0, _mouseButtons);
+      },
+      onPanUpdate: (d) {
+        final last = _touchLast;
+        _touchLast = d.localPosition;
+        if (last != null) _sendMouseDelta(d.localPosition - last);
+      },
+      onPanEnd: (_) {
+        setState(() => _mouseButtons = _mouseButtons & ~0x01);
+        _touchLast = null;
+        _cm().sendMouse(0, 0, _mouseButtons);
+      },
+      onPanCancel: () {
+        setState(() => _mouseButtons = _mouseButtons & ~0x01);
+        _touchLast = null;
+        _cm().sendMouse(0, 0, _mouseButtons);
+      },
+      child: Container(
+        decoration: AppTheme.pad(color: AppTheme.surface),
+        child: const Center(
+          child: Text('TOUCHPAD\nDRAG = MOVE · TAP = CLICK',
+              textAlign: TextAlign.center, style: AppTheme.label),
+        ),
       ),
     );
   }
@@ -716,188 +514,136 @@ class _ControllerScreenState extends State<ControllerScreen>
     _cm().sendMouse(dx, dy, _mouseButtons);
   }
 
-  Widget _mouseButtonPill(String label, int bit) {
-    final active = (_mouseButtons & bit) != 0;
-    return GestureDetector(
-      onTap: () {
-        setState(() => _mouseButtons ^= bit);
-        _cm().sendMouse(0, 0, _mouseButtons);
-      },
-      child: Container(
-        width: 52,
-        height: 30,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: active ? AppTheme.accentA.withOpacity(0.5) : null,
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(
-              color: active ? AppTheme.accentB : AppTheme.hairline,
-              width: 1.2),
-        ),
-        child: Text(label,
-            style: TextStyle(
-                fontSize: 8,
-                color: Colors.white.withOpacity(active ? 1 : 0.7),
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.4)),
+  // ----------------------------- Keyboard ------------------------------ //
+  static const _topKeys = ['ESC', 'TAB', 'CAPS', 'SHIFT', 'CTRL', 'ENTER', 'BACKSPACE'];
+
+  Widget _buildKeyboardLayout() {
+    final f = _panel.field;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final k in _topKeys) ...[
+                  _key(k, k.length > 3 ? 66 : 52, 46, k.length > 3 ? 9.0 : 12.0),
+                  const SizedBox(width: 8),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                _keyCluster({'W': (0, 0), 'D': (1, 0), 'A': (0, 1), 'S': (1, 1)}),
+                _keyCluster(
+                    {'UP': (0, 0), 'RIGHT': (1, 0), 'LEFT': (0, 1), 'DOWN': (1, 1)}),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Center(
+            child: GamepadButton(
+              label: 'SPACE',
+              width: f.width * 0.45,
+              height: 46,
+              fontSize: 12,
+              onDown: () => _sendKey('SPACE', true),
+              onUp: () => _sendKey('SPACE', false),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  // -------------------------- Keyboard layout ------------------------- //
-  Widget _buildKeyboardLayout() {
-    final media = MediaQuery.of(context).size;
-    final keys = ['W', 'A', 'S', 'D', 'SPACE', 'SHIFT', 'CTRL', 'ENTER', 'ESC'];
-    final keySize = (media.height * 0.24).clamp(60.0, 120.0);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 64, 8, 24),
-      child: Wrap(
-        spacing: 12,
-        runSpacing: 12,
-        alignment: WrapAlignment.center,
-        children: keys
-            .map((k) => _buildKeyboardKey(k, keySize))
+  Widget _keyCluster(Map<String, (int, int)> layout) {
+    final kb = LayoutPanel.fit(_panel.gripLeft, 0.62) / 3;
+    final size = (kb * 3 + 10).clamp(104.0, 250.0);
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        children: layout.entries
+            .map((e) {
+              final (cx, cy) = e.value;
+              return Positioned(
+                left: cx * (size - kb),
+                top: cy * (size - kb),
+                width: kb,
+                height: kb,
+                child: _key(e.key, kb, kb, e.key.length > 1 ? 9.0 : 15.0),
+              );
+            })
             .toList(),
       ),
     );
   }
 
-  Widget _buildKeyboardKey(String key, double size) {
-    return GestureDetector(
-      onTapDown: (_) => _sendKey(key, true),
-      onTapUp: (_) => _sendKey(key, false),
-      onTapCancel: () => _sendKey(key, false),
-      child: Container(
-        width: size,
-        height: size,
-        decoration: AppTheme.glass(radius: 14),
-        child: Center(
-          child: Text(key,
-              style: const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.bold)),
-        ),
-      ),
+  Widget _key(String k, double w, double h, double fs) {
+    return GamepadButton(
+      label: k,
+      width: w,
+      height: h,
+      fontSize: fs,
+      onDown: () => _sendKey(k, true),
+      onUp: () => _sendKey(k, false),
     );
   }
 
-  // --------------------------- Menu / chrome -------------------------- //
-  Widget _buildMenuButton() {
-    return GestureDetector(
-      onTap: () => setState(() => _menuOpen = !_menuOpen),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: _menuOpen
-              ? AppTheme.accentGradient
-              : const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0x1AFFFFFF), Color(0x0AFFFFFF)],
-                ),
-          border: Border.all(
-              color: _menuOpen ? AppTheme.accentB : AppTheme.hairline, width: 1.2),
-          boxShadow: AppTheme.glow(AppTheme.accentA, opacity: 0.35),
-        ),
-        child: Icon(_menuOpen ? Icons.close : Icons.menu,
-            color: Colors.white, size: 22),
-      ),
-    );
-  }
-
-  Widget _buildLatencyPill() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.35),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppTheme.hairline),
-      ),
-      child: Consumer<ConnectionManager>(
-        builder: (context, manager, _) => Row(
-          children: [
-            Icon(manager.mode == ConnectionMode.usb ? Icons.usb : Icons.wifi,
-                size: 14, color: AppTheme.green),
-            const SizedBox(width: 6),
-            Text('${manager.latency}ms',
-                style: const TextStyle(
-                    fontSize: 12, color: AppTheme.green,
-                    fontWeight: FontWeight.bold)),
-          ],
-        ),
-      ),
-    );
-  }
-
+  // ------------------------------ Menu --------------------------------- //
   Widget _buildMenuOverlay() {
+    final mq = MediaQuery.of(context);
+    final sheetW = math.min(372.0, mq.size.width - 16);
     return GestureDetector(
       onTap: () => setState(() => _menuOpen = false),
       child: Container(
-        color: Colors.black.withOpacity(0.45),
-        alignment: Alignment.topCenter,
-        padding: const EdgeInsets.only(top: 60),
-        child: GestureDetector(
-          onTap: () {},
-          child: Container(
-            width: 320,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  const Color(0xFF1B2436).withOpacity(0.97),
-                  const Color(0xFF10162B).withOpacity(0.97),
-                ],
-              ),
-              border: Border.all(color: AppTheme.hairline),
-              boxShadow: AppTheme.glow(AppTheme.accentA, opacity: 0.25,
-                  blur: 30),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text('CONTROLS',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                        fontSize: 12,
-                        letterSpacing: 1.5,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.accentB)),
-                const SizedBox(height: 12),
-                _menuLabel('STYLES'),
-                _menuRow(Icons.favorite, 'Simple', ControllerLayout.simple),
-                _menuRow(Icons.gamepad, 'Gamepad', ControllerLayout.gamepad),
-                _menuRow(Icons.military_tech, 'Pro', ControllerLayout.pro),
-                _menuRow(Icons.videogame_asset, 'PSP', ControllerLayout.psp),
-                _menuRow(Icons.sports_esports, 'PS5', ControllerLayout.ps5),
-                _menuRow(Icons.mouse, 'Mouse', ControllerLayout.mouse),
-                _menuRow(Icons.keyboard, 'Keyboard', ControllerLayout.keyboard),
-                _menuRow(Icons.tune, 'My Custom',
-                    ControllerLayout.custom, enabled: _hasCustom),
-                const SizedBox(height: 12),
-                _menuLabel('CUSTOMIZE'),
-                _menuAction(Icons.edit, 'Edit Custom Layout', _openEditor),
-                const SizedBox(height: 12),
-                _menuToggle(
-                  icon: Icons.grid_on,
-                  label: _dpadMode ? 'D-Pad (left grip)' : 'Stick (left grip)',
-                  value: _dpadMode,
-                  onChanged: (v) => setState(() => _dpadMode = v),
+        color: Colors.black54,
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: GestureDetector(
+            onTap: () {},
+            child: Container(
+              width: sheetW,
+              margin: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+              constraints:
+                  BoxConstraints(maxHeight: mq.size.height * 0.72),
+              decoration: AppTheme.card(color: AppTheme.surface),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(12, 14, 12, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Center(
+                        child:
+                            Text('CONTROLS', textAlign: TextAlign.center, style: AppTheme.label)),
+                    const SizedBox(height: 10),
+                    _menuLabel('STYLES'),
+                    _menuRow(Icons.gamepad, 'Controller', ControllerLayout.gamepad),
+                    _menuRow(Icons.mouse, 'Mouse', ControllerLayout.mouse),
+                    _menuRow(Icons.keyboard, 'Keyboard', ControllerLayout.keyboard),
+                    _menuRow(Icons.tune, 'My Custom',
+                        ControllerLayout.custom, enabled: _hasCustom),
+                    const SizedBox(height: 12),
+                    _menuLabel('CUSTOMIZE'),
+                    _menuAction(Icons.edit, 'Edit Custom Layout', _openEditor),
+                    _menuAction(Icons.settings, 'Settings', () {
+                      Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => const SettingsScreen()));
+                    }, color: AppTheme.textSecondary),
+                    const SizedBox(height: 4),
+                    _menuAction(Icons.exit_to_app, 'Disconnect', _exit,
+                        color: AppTheme.red),
+                    const SizedBox(height: 8),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                _menuAction(Icons.settings, 'Settings', () {
-                  Navigator.push(context,
-                      MaterialPageRoute(builder: (_) => const SettingsScreen()));
-                }),
-                const SizedBox(height: 8),
-                _menuAction(Icons.exit_to_app, 'Disconnect', _exit,
-                    color: AppTheme.red),
-              ],
+              ),
             ),
           ),
         ),
@@ -909,7 +655,7 @@ class _ControllerScreenState extends State<ControllerScreen>
       {bool enabled = true}) {
     final active = _currentLayout == layout;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 3),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
         onTap: enabled
@@ -920,43 +666,40 @@ class _ControllerScreenState extends State<ControllerScreen>
                 });
               }
             : null,
-        child: Container(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: active
-                ? AppTheme.accentA.withOpacity(0.2)
-                : Colors.white.withOpacity(0.03),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-                color: active ? AppTheme.accentB : Colors.transparent,
-                width: 1),
-          ),
+          decoration: active
+              ? AppTheme.cardActive(radius: 10)
+              : BoxDecoration(
+                  color: AppTheme.whiteAt(0.03),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.transparent),
+                ),
           child: Row(
             children: [
-              Icon(icon, size: 20,
+              Icon(icon,
+                  size: 20,
                   color: active
-                      ? AppTheme.accentB
+                      ? AppTheme.accent
                       : enabled
-                          ? Colors.white60
-                          : Colors.white30),
+                          ? AppTheme.textSecondary
+                          : AppTheme.textMuted),
               const SizedBox(width: 12),
               Text(label,
                   style: TextStyle(
                       fontSize: 14,
                       color: active
-                          ? Colors.white
+                          ? AppTheme.textPrimary
                           : enabled
-                              ? Colors.white70
-                              : Colors.white30,
-                      fontWeight:
-                          active ? FontWeight.w700 : FontWeight.w400)),
+                              ? AppTheme.textSecondary
+                              : AppTheme.textMuted,
+                      fontWeight: active ? FontWeight.w700 : FontWeight.w400)),
               const Spacer(),
-              if (active)
-                const Icon(Icons.check, size: 18, color: AppTheme.accentB),
+              if (active) const Icon(Icons.check, size: 18, color: AppTheme.accent),
               if (!enabled && !active)
-                Text(layout == ControllerLayout.custom ? 'Build one' : 'Soon',
-                    style: const TextStyle(
-                        fontSize: 10, color: Colors.white30)),
+                Text('Build one',
+                    style: AppTheme.caption.copyWith(color: AppTheme.textMuted)),
             ],
           ),
         ),
@@ -967,189 +710,35 @@ class _ControllerScreenState extends State<ControllerScreen>
   Widget _menuLabel(String text) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 4, 4, 2),
-      child: Text(text,
-          style: const TextStyle(
-              fontSize: 10,
-              letterSpacing: 1.2,
-              fontWeight: FontWeight.w700,
-              color: Colors.white38)),
-    );
-  }
-
-  bool get _hasCustom =>
-      (context.read<LayoutStore>().layout?.slots.isNotEmpty ?? false);
-
-  Widget _menuToggle({
-    required IconData icon,
-    required String label,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: Colors.white60),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(label,
-                style: const TextStyle(fontSize: 14, color: Colors.white70)),
-          ),
-          Switch(value: value, onChanged: onChanged, activeColor: AppTheme.accentA),
-        ],
-      ),
+      child: Text(text, style: AppTheme.label.copyWith(color: AppTheme.textMuted)),
     );
   }
 
   Widget _menuAction(IconData icon, String label, VoidCallback onTap,
-      {Color color = Colors.white70}) {
+      {Color color = AppTheme.textPrimary}) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 3),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.03),
+            color: AppTheme.whiteAt(0.03),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Row(
             children: [
               Icon(icon, size: 20, color: color),
               const SizedBox(width: 12),
-              Text(label,
-                  style: TextStyle(fontSize: 14, color: color)),
+              Text(label, style: TextStyle(fontSize: 14, color: color)),
             ],
           ),
         ),
       ),
     );
   }
-}
 
-class _Bumper extends StatefulWidget {
-  final String label;
-  final void Function(String, bool) onChanged;
-
-  const _Bumper({required this.label, required this.onChanged});
-
-  @override
-  State<_Bumper> createState() => _BumperState();
-}
-
-class _BumperState extends State<_Bumper> {
-  bool _pressed = false;
-
-  void _set(bool v) {
-    if (_pressed == v) return;
-    setState(() => _pressed = v);
-    widget.onChanged(widget.label, v);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => _set(true),
-      onTapUp: (_) => _set(false),
-      onTapCancel: () => _set(false),
-      child: AnimatedScale(
-        scale: _pressed ? 0.92 : 1.0,
-        duration: const Duration(milliseconds: 60),
-        curve: Curves.easeOut,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 60),
-          width: 68,
-          height: 44,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            gradient: _pressed
-                ? AppTheme.accentGradient
-                : const LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Color(0xFF2C3A54), Color(0xFF151C2E)]),
-            border: Border.all(
-              color: _pressed ? AppTheme.accentB : AppTheme.hairline,
-              width: 1.2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.45),
-                blurRadius: 6,
-                offset: const Offset(0, 4),
-              ),
-              if (_pressed)
-                BoxShadow(
-                  color: AppTheme.accentA.withOpacity(0.35),
-                  blurRadius: 16,
-                ),
-            ],
-          ),
-          child: Text(widget.label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: _pressed ? Colors.white : Colors.white70,
-              )),
-        ),
-      ),
-    );
-  }
-}
-
-class _PillButton extends StatefulWidget {
-  final String label;
-  final void Function(String, bool) onChanged;
-
-  const _PillButton({required this.label, required this.onChanged});
-
-  @override
-  State<_PillButton> createState() => _PillButtonState();
-}
-
-class _PillButtonState extends State<_PillButton> {
-  bool _pressed = false;
-
-  void _set(bool v) {
-    if (_pressed == v) return;
-    setState(() => _pressed = v);
-    widget.onChanged(widget.label, v);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => _set(true),
-      onTapUp: (_) => _set(false),
-      onTapCancel: () => _set(false),
-      child: AnimatedScale(
-        scale: _pressed ? 0.9 : 1.0,
-        duration: const Duration(milliseconds: 60),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 60),
-          width: 52,
-          height: 30,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            gradient: _pressed ? AppTheme.accentGradient : null,
-            color: _pressed ? null : Colors.white.withOpacity(0.06),
-            borderRadius: BorderRadius.circular(15),
-            border: Border.all(
-              color: _pressed ? AppTheme.accentB : AppTheme.hairline,
-              width: 1.2,
-            ),
-          ),
-          child: Text(widget.label,
-              style: TextStyle(
-                fontSize: 8,
-                color: _pressed ? Colors.white : Colors.white70,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.4,
-              )),
-        ),
-      ),
-    );
-  }
+  bool get _hasCustom =>
+      (context.read<LayoutStore>().layout?.slots.isNotEmpty ?? false);
 }

@@ -117,6 +117,42 @@ class TestServer(unittest.TestCase):
         key = [c for c in self.pad.calls if c[0] == "key"][-1]
         self.assertEqual(key[1:], (idx, True))
 
+    def test_callbacks_on_state_and_on_key(self):
+        pad = _RecordingPad()
+        events = {"state": [], "key": []}
+        srv = PulsePadServer(
+            pad, tcp_port=15115, udp_port=15116, discovery_port=15117,
+            on_state=lambda *st: events["state"].append(st),
+            on_key=lambda kc, pr: events["key"].append((kc, pr)))
+        srv.start()
+        try:
+            time.sleep(0.2)
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                g = P.encode_gamepad(P.BTN_A, P.BTN_DPAD_LEFT, 100, -50, 0, 0, 0, 0)
+                sock.sendto(g, ("127.0.0.1", 15116))
+                k_idx = P.KEYS.index("SPACE")
+                sock.sendto(P.encode_key(k_idx, 1), ("127.0.0.1", 15116))
+                sock.sendto(P.encode_key(k_idx, 0), ("127.0.0.1", 15116))
+            finally:
+                sock.close()
+
+            deadline = time.time() + 2.0
+            while time.time() < deadline:
+                if events["state"] and len(events["key"]) >= 2:
+                    break
+                time.sleep(0.01)
+
+            self.assertTrue(events["state"], "on_state not fired for GAMEPAD")
+            lo, hi, lx, ly, *_ = events["state"][0]
+            self.assertEqual(lo & P.BTN_A, P.BTN_A)
+            self.assertEqual(hi & P.BTN_DPAD_LEFT, P.BTN_DPAD_LEFT)
+            self.assertEqual((lx, ly), (100, -50))
+            self.assertIn((k_idx, 1), events["key"])
+            self.assertIn((k_idx, 0), events["key"])
+        finally:
+            srv.stop()
+
     def test_tcp_gamepad_flow_with_partial_reads(self):
         pkt = P.encode_gamepad(
             P.BTN_B | P.BTN_Y | P.BTN_START, P.BTN_L3, -5000, 0, 0, 0, 0, 255)
