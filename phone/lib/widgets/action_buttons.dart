@@ -27,7 +27,17 @@ class ActionButtons extends StatefulWidget {
 
 class _ActionButtonsState extends State<ActionButtons> {
   final Set<String> _pressed = {};
-  double get _d => widget.size / 2.8;
+
+  /// Diameter of each face button (slightly larger for a PS-style grip).
+  double get _d => widget.size / 2.7;
+
+  /// Alignment of each face button within the diamond (x, y in -1..1).
+  static const _pos = {
+    'Y': Alignment(0.0, -0.78), // triangle, top
+    'B': Alignment(0.78, 0.0), // circle, right
+    'A': Alignment(0.0, 0.78), // cross, bottom
+    'X': Alignment(-0.78, 0.0), // square, left
+  };
 
   static const _ps2Glyph = {'Y': '▲', 'B': '●', 'A': '✕', 'X': '■'};
   static const _ps2Color = {
@@ -57,10 +67,13 @@ class _ActionButtonsState extends State<ActionButtons> {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Positioned(top: 0, child: _btn('Y')),
-          Positioned(left: 0, bottom: widget.size * 0.30, child: _btn('X')),
-          Positioned(right: 0, bottom: widget.size * 0.30, child: _btn('B')),
-          Positioned(bottom: 0, child: _btn('A')),
+          for (final e in _pos.entries)
+            Positioned.fill(
+              child: Align(
+                alignment: e.value,
+                child: _btn(e.key),
+              ),
+            ),
         ],
       ),
     );
@@ -82,7 +95,7 @@ class _ActionButtonsState extends State<ActionButtons> {
       onTapUp: (_) => _up(label),
       onTapCancel: () => _up(label),
       child: AnimatedScale(
-        scale: isPressed ? 0.92 : 1.0,
+        scale: isPressed ? 0.9 : 1.0,
         duration: const Duration(milliseconds: 60),
         child: Container(
           width: _d,
@@ -92,8 +105,17 @@ class _ActionButtonsState extends State<ActionButtons> {
             color: fill,
             border: Border.all(
               color: ring,
-              width: isPressed ? 1.8 : 1.2,
+              width: isPressed ? 2.2 : 1.4,
             ),
+            boxShadow: isPressed
+                ? [
+                    BoxShadow(
+                      color: lit.withAlpha(120),
+                      blurRadius: 14,
+                      spreadRadius: 2,
+                    ),
+                  ]
+                : const [],
           ),
           child: Center(
             child: Text(
@@ -101,7 +123,7 @@ class _ActionButtonsState extends State<ActionButtons> {
               style: TextStyle(
                 color: glyphColor,
                 fontWeight: FontWeight.w900,
-                fontSize: _d * (widget.ps2 ? 0.36 : 0.34),
+                fontSize: _d * (widget.ps2 ? 0.38 : 0.34),
                 height: 1,
               ),
             ),

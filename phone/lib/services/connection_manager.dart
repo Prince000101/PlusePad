@@ -24,7 +24,7 @@ import 'protocol.dart' as p;
 ///    adb reverse so no IP is ever needed.
 ///  * Timeouts + automatic reconnection keep long sessions alive.
 class ConnectionManager extends ChangeNotifier {
-  ConnectionMode _mode = ConnectionMode.usb;
+  ConnectionMode _mode = ConnectionMode.wifi;
   ConnectionStatus _state = ConnectionStatus.disconnected;
   ControllerLayout _layout = ControllerLayout.gamepad;
   String _typedIp = '';

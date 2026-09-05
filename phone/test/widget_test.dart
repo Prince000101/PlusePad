@@ -20,7 +20,7 @@ void main() {
     // Connection mode cards present.
     expect(find.text('CONNECTION MODE'), findsOneWidget);
     expect(find.text('USB'), findsOneWidget);
-    expect(find.text('Wi-Fi'), findsOneWidget);
+    expect(find.text('Wi-Fi'), findsNWidgets(2));
     // Connect button present.
     expect(find.text('CONNECT'), findsOneWidget);
 

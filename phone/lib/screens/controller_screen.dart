@@ -7,6 +7,7 @@ import 'package:vibration/vibration.dart';
 
 import '../models/packet.dart';
 import '../services/connection_manager.dart';
+import '../services/protocol.dart' as p;
 import '../models/control_slot.dart';
 import '../services/layout_store.dart';
 import '../theme/app_theme.dart';
@@ -60,7 +61,6 @@ class _ControllerScreenState extends State<ControllerScreen>
   @override
   void dispose() {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     super.dispose();
   }
 
@@ -393,22 +393,31 @@ class _ControllerScreenState extends State<ControllerScreen>
   }
 
   Widget _customButton(String label, String action) {
+    // A custom button can fire a gamepad button OR a real keyboard key.
+    void press(bool down) {
+      if (p.kKeys.contains(action)) {
+        _sendKey(action, down);
+      } else {
+        _setButton(action, down);
+      }
+    }
+
     return GamepadButton(
       label: label,
       width: double.infinity,
       height: double.infinity,
       fontSize: 14,
-      onDown: () => _setButton(action, true),
-      onUp: () => _setButton(action, false),
+      onDown: () => press(true),
+      onUp: () => press(false),
     );
   }
 
-  void _openEditor() {
+  void _openEditor({bool copyDefault = false}) {
     final store = context.read<LayoutStore>();
-    final existing = store.layout;
-    final working = existing != null
-        ? CustomLayout(name: 'My Custom', slots: existing.slots)
-        : _defaultCustomLayout();
+    final working = switch (copyDefault || !_hasCustom) {
+      true => _defaultCustomLayout(),
+      false => CustomLayout(name: 'My Custom', slots: store.layout!.slots),
+    };
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -418,15 +427,37 @@ class _ControllerScreenState extends State<ControllerScreen>
   }
 
   CustomLayout _defaultCustomLayout() {
+    // A full PS2-style controller you can copy as a base, then enlarge /
+    // reposition every control to taste. Sizes are fractions of screen W/H.
+    ControlSlot s(String id, String kind, double x, double y, double wd,
+            double ht, String label, String action) =>
+        ControlSlot(
+            id: id,
+            kind: kind,
+            x: x,
+            y: y,
+            w: wd,
+            h: ht,
+            label: label,
+            action: action);
     return CustomLayout(name: 'My Custom', slots: [
-      ControlSlot(id: 'a', kind: 'button', x: 0.78, y: 0.32, w: 0.10, h: 0.14, label: 'A', action: 'A'),
-      ControlSlot(id: 'b', kind: 'button', x: 0.86, y: 0.50, w: 0.10, h: 0.14, label: 'B', action: 'B'),
-      ControlSlot(id: 'x', kind: 'button', x: 0.86, y: 0.16, w: 0.10, h: 0.14, label: 'X', action: 'X'),
-      ControlSlot(id: 'y', kind: 'button', x: 0.78, y: 0.66, w: 0.10, h: 0.14, label: 'Y', action: 'Y'),
-      ControlSlot(id: 'd', kind: 'dpad', x: 0.16, y: 0.5, w: 0.22, h: 0.45, label: 'D-PAD', action: 'DPAD'),
-      ControlSlot(id: 's', kind: 'stick', x: 0.84, y: 0.78, w: 0.18, h: 0.32, label: 'STICK', action: 'RX/RY'),
-      ControlSlot(id: 'sel', kind: 'button', x: 0.45, y: 0.78, w: 0.10, h: 0.10, label: 'SELECT', action: 'SELECT'),
-      ControlSlot(id: 'sta', kind: 'button', x: 0.55, y: 0.78, w: 0.10, h: 0.10, label: 'START', action: 'START'),
+      // Shoulders along the top edge.
+      s('l2', 'button', 0.24, 0.10, 0.13, 0.14, 'L2', 'LT'),
+      s('l1', 'button', 0.40, 0.10, 0.13, 0.14, 'L1', 'LB'),
+      s('r1', 'button', 0.60, 0.10, 0.13, 0.14, 'R1', 'RB'),
+      s('r2', 'button', 0.76, 0.10, 0.13, 0.14, 'R2', 'RT'),
+      // Left cluster: D-pad + left stick.
+      s('d', 'dpad', 0.16, 0.48, 0.30, 0.42, 'D-PAD', 'DPAD'),
+      s('lst', 'stick', 0.14, 0.88, 0.26, 0.26, 'L-STICK', 'LX/LY'),
+      // Face buttons, PS2 diamond (A bottom, B right, X left, Y top).
+      s('a', 'button', 0.70, 0.34, 0.16, 0.17, 'A', 'A'),
+      s('b', 'button', 0.86, 0.52, 0.16, 0.17, 'B', 'B'),
+      s('x', 'button', 0.54, 0.52, 0.16, 0.17, 'X', 'X'),
+      s('y', 'button', 0.70, 0.70, 0.16, 0.17, 'Y', 'Y'),
+      // Right stick + centre buttons.
+      s('rst', 'stick', 0.86, 0.88, 0.26, 0.26, 'R-STICK', 'RX/RY'),
+      s('sel', 'button', 0.44, 0.10, 0.12, 0.13, 'SELECT', 'SELECT'),
+      s('sta', 'button', 0.56, 0.10, 0.12, 0.13, 'START', 'START'),
     ]);
   }
 
@@ -629,9 +660,12 @@ class _ControllerScreenState extends State<ControllerScreen>
                     _menuRow(Icons.mouse, 'Mouse', ControllerLayout.mouse),
                     _menuRow(Icons.keyboard, 'Keyboard', ControllerLayout.keyboard),
                     _menuRow(Icons.tune, 'My Custom',
-                        ControllerLayout.custom, enabled: _hasCustom),
+                        ControllerLayout.custom, enabled: _hasCustom,
+                        onTap: _hasCustom ? null : _openEditor),
                     const SizedBox(height: 12),
                     _menuLabel('CUSTOMIZE'),
+                    _menuAction(Icons.content_copy,
+                        'Copy Default Controller', () => _openEditor(copyDefault: true)),
                     _menuAction(Icons.edit, 'Edit Custom Layout', _openEditor),
                     _menuAction(Icons.settings, 'Settings', () {
                       Navigator.push(context,
@@ -652,20 +686,22 @@ class _ControllerScreenState extends State<ControllerScreen>
   }
 
   Widget _menuRow(IconData icon, String label, ControllerLayout layout,
-      {bool enabled = true}) {
+      {bool enabled = true, VoidCallback? onTap}) {
     final active = _currentLayout == layout;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: enabled
+    final action = onTap ??
+        (enabled
             ? () {
                 setState(() {
                   _currentLayout = layout;
                   _menuOpen = false;
                 });
               }
-            : null,
+            : null);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: action,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -686,16 +722,19 @@ class _ControllerScreenState extends State<ControllerScreen>
                           ? AppTheme.textSecondary
                           : AppTheme.textMuted),
               const SizedBox(width: 12),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 14,
-                      color: active
-                          ? AppTheme.textPrimary
-                          : enabled
-                              ? AppTheme.textSecondary
-                              : AppTheme.textMuted,
-                      fontWeight: active ? FontWeight.w700 : FontWeight.w400)),
-              const Spacer(),
+              Expanded(
+                child: Text(label,
+                    style: TextStyle(
+                        fontSize: 14,
+                        color: active
+                            ? AppTheme.textPrimary
+                            : enabled
+                                ? AppTheme.textSecondary
+                                : AppTheme.textMuted,
+                        fontWeight: active ? FontWeight.w700 : FontWeight.w400),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+              ),
               if (active) const Icon(Icons.check, size: 18, color: AppTheme.accent),
               if (!enabled && !active)
                 Text('Build one',
@@ -731,7 +770,12 @@ class _ControllerScreenState extends State<ControllerScreen>
             children: [
               Icon(icon, size: 20, color: color),
               const SizedBox(width: 12),
-              Text(label, style: TextStyle(fontSize: 14, color: color)),
+              Expanded(
+                child: Text(label,
+                    style: TextStyle(fontSize: 14, color: color),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+              ),
             ],
           ),
         ),

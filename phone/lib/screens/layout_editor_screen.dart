@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../models/control_slot.dart';
@@ -33,14 +32,11 @@ class _LayoutEditorScreenState extends State<LayoutEditorScreen> {
   @override
   void initState() {
     super.initState();
-    SystemChrome.setPreferredOrientations(
-        [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
     _slots = widget.layout.slots.map((s) => ControlSlot.copy(s)).toList();
   }
 
   @override
   void dispose() {
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     super.dispose();
   }
 

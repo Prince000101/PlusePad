@@ -17,8 +17,6 @@ class ConnectionScreen extends StatefulWidget {
 
 class _ConnectionScreenState extends State<ConnectionScreen>
     with SingleTickerProviderStateMixin {
-  final _ipController = TextEditingController();
-  bool _scanning = false;
   late AnimationController _pulseController;
 
   @override
@@ -28,11 +26,15 @@ class _ConnectionScreenState extends State<ConnectionScreen>
       duration: const Duration(milliseconds: 1800),
       vsync: this,
     )..repeat(reverse: true);
+
+    // Wi-Fi is the default zero-config path; no IP typing needed at all.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<ConnectionManager>().setMode(ConnectionMode.wifi);
+    });
   }
 
   @override
   void dispose() {
-    _ipController.dispose();
     _pulseController.dispose();
     super.dispose();
   }
@@ -54,13 +56,13 @@ class _ConnectionScreenState extends State<ConnectionScreen>
                     child: Column(
                       children: [
                         _buildLogo(),
-                        const SizedBox(height: 36),
-                        _buildConnectionOptions(),
                         const SizedBox(height: 28),
+                        _buildConnectionOptions(),
+                        const SizedBox(height: 22),
                         _buildConnectButton(),
                         const SizedBox(height: 14),
                         _buildStatus(),
-                        const SizedBox(height: 28),
+                        const SizedBox(height: 20),
                         _buildFooter(),
                       ],
                     ),
@@ -82,7 +84,7 @@ class _ConnectionScreenState extends State<ConnectionScreen>
           builder: (context, child) {
             final t = _pulseController.value;
             return Container(
-              padding: const EdgeInsets.all(22),
+              padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: AppTheme.surface,
@@ -91,13 +93,13 @@ class _ConnectionScreenState extends State<ConnectionScreen>
                   width: 1.6,
                 ),
               ),
-              child: const Icon(Icons.gamepad, size: 68, color: AppTheme.accent),
+              child: const Icon(Icons.gamepad, size: 56, color: AppTheme.accent),
             );
           },
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 14),
         const Text('PulsePad', style: AppTheme.display),
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
         const Text('Turn your phone into a game controller',
             style: TextStyle(color: AppTheme.textSecondary)),
       ],
@@ -109,28 +111,98 @@ class _ConnectionScreenState extends State<ConnectionScreen>
       builder: (context, manager, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('CONNECTION MODE', style: AppTheme.label),
+          Row(
+            children: [
+              const Text('CONNECTION MODE', style: AppTheme.label),
+              const Spacer(),
+              Text(
+                manager.mode == ConnectionMode.usb ? 'USB' : 'Wi-Fi',
+                style: AppTheme.caption.copyWith(color: AppTheme.accent),
+              ),
+            ],
+          ),
           const SizedBox(height: 10),
-          _buildModeCard(
-            icon: Icons.usb,
-            title: 'USB',
-            subtitle: 'Low latency • Recommended',
-            isSelected: manager.mode == ConnectionMode.usb,
-            onTap: () => manager.setMode(ConnectionMode.usb),
+          _buildQrCard(manager),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildModeCard(
+                  icon: Icons.wifi,
+                  title: 'Wi-Fi',
+                  subtitle: 'Auto • recommended',
+                  isSelected: manager.mode == ConnectionMode.wifi,
+                  onTap: () => manager.setMode(ConnectionMode.wifi),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildModeCard(
+                  icon: Icons.usb,
+                  title: 'USB',
+                  subtitle: 'Cable • adb reverse',
+                  isSelected: manager.mode == ConnectionMode.usb,
+                  onTap: () => manager.setMode(ConnectionMode.usb),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          _buildModeCard(
-            icon: Icons.wifi,
-            title: 'Wi-Fi',
-            subtitle: 'Wireless connection',
-            isSelected: manager.mode == ConnectionMode.wifi,
-            onTap: () => manager.setMode(ConnectionMode.wifi),
-          ),
-          if (manager.mode == ConnectionMode.wifi) ...[
-            const SizedBox(height: 14),
-            _buildIpInput(),
+          if (manager.mode == ConnectionMode.wifi &&
+              manager.ipAddress.isEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Point at the QR on the PC screen — no IP typing, Wi-Fi auto-fills.',
+              style: AppTheme.caption.copyWith(color: AppTheme.textMuted),
+            ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildQrCard(ConnectionManager manager) {
+    return GestureDetector(
+      onTap: () => _scanAndConnect(context),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: AppTheme.cardActive(radius: 18),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppTheme.accentAt(0.16),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppTheme.accent, width: 1),
+              ),
+              child: const Icon(Icons.qr_code_scanner,
+                  color: AppTheme.accent, size: 34),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('SCAN PC QR',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary,
+                      )),
+                  const SizedBox(height: 3),
+                  Text(
+                    manager.ipAddress.isEmpty
+                        ? 'Wi-Fi auto-connect • no typing'
+                        : 'Loaded ${manager.ipAddress}',
+                    style: AppTheme.caption.copyWith(color: AppTheme.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: AppTheme.textMuted),
+          ],
+        ),
       ),
     );
   }
@@ -146,178 +218,47 @@ class _ConnectionScreenState extends State<ConnectionScreen>
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
-        padding: const EdgeInsets.all(14),
-        decoration: isSelected
-            ? AppTheme.cardActive()
-            : AppTheme.card(),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? AppTheme.accentAt(0.16)
-                    : AppTheme.surfaceAlt,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                    color: isSelected ? AppTheme.accent : AppTheme.hairline,
-                    width: 1),
-              ),
-              child: Icon(
-                icon,
-                color: isSelected ? AppTheme.accent : AppTheme.textSecondary,
-                size: 22,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: isSelected ? AppTheme.textPrimary : AppTheme.textSecondary,
-                      )),
-                  const SizedBox(height: 2),
-                  Text(subtitle, style: AppTheme.caption),
-                ],
-              ),
-            ),
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isSelected ? AppTheme.accent : Colors.transparent,
-                border: Border.all(
-                  color: isSelected ? AppTheme.accent : AppTheme.hairline,
-                  width: 2,
-                ),
-              ),
-              child: isSelected
-                  ? const Icon(Icons.check, size: 13, color: Color(0xFF081120))
-                  : null,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildIpInput() {
-    return Consumer<ConnectionManager>(
-      builder: (context, manager, _) {
-        return Column(
+        padding: const EdgeInsets.all(12),
+        decoration: isSelected ? AppTheme.cardActive() : AppTheme.card(),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _ipController,
-                    decoration: InputDecoration(
-                      hintText: '192.168.1.100',
-                      hintStyle: const TextStyle(color: AppTheme.textMuted),
-                      filled: true,
-                      fillColor: AppTheme.surface,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: AppTheme.hairline),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: AppTheme.hairline),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide:
-                            const BorderSide(color: AppTheme.accent, width: 1.4),
-                      ),
-                      prefixIcon:
-                          const Icon(Icons.router, color: AppTheme.textSecondary),
+                Icon(icon,
+                    size: 20,
+                    color: isSelected ? AppTheme.accent : AppTheme.textSecondary),
+                const Spacer(),
+                Container(
+                  width: 16,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isSelected ? AppTheme.accent : Colors.transparent,
+                    border: Border.all(
+                      color: isSelected ? AppTheme.accent : AppTheme.hairline,
+                      width: 2,
                     ),
-                    keyboardType: TextInputType.number,
-                    style: const TextStyle(color: AppTheme.textPrimary),
-                    onChanged: (value) =>
-                        context.read<ConnectionManager>().setIpAddress(value),
                   ),
-                ),
-                const SizedBox(width: 10),
-                GamepadButton(
-                  label: '',
-                  icon: _scanning ? null : Icons.radar,
-                  width: 52,
-                  height: 52,
-                  round: true,
-                  highlight: !_scanning,
-                  onTap: _scanning ? null : () => _scanForPc(context),
+                  child: isSelected
+                      ? const Icon(Icons.check, size: 10, color: Color(0xFF081120))
+                      : null,
                 ),
               ],
             ),
-            if (manager.discovered.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: AppTheme.card(),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('FOUND', style: AppTheme.label),
-                    const SizedBox(height: 4),
-                    ...manager.discovered.map((s) => InkWell(
-                          onTap: () {
-                            _ipController.text = s.host;
-                            context
-                                .read<ConnectionManager>()
-                                .setIpAddress(s.host);
-                            setState(() {});
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 6),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.desktop_mac,
-                                    color: AppTheme.green, size: 18),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    '${s.name}  •  ${s.host}',
-                                    style: const TextStyle(
-                                        fontSize: 13,
-                                        color: AppTheme.textPrimary,
-                                        fontWeight: FontWeight.w600),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        )),
-                  ],
-                ),
-              ),
-            ],
+            const SizedBox(height: 8),
+            Text(title,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: isSelected ? AppTheme.textPrimary : AppTheme.textSecondary,
+                )),
+            const SizedBox(height: 2),
+            Text(subtitle, style: AppTheme.caption),
           ],
-        );
-      },
+        ),
+      ),
     );
-  }
-
-  Future<void> _scanForPc(BuildContext context) async {
-    setState(() => _scanning = true);
-    try {
-      await context.read<ConnectionManager>().discover();
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Scan failed: $e')));
-      }
-    }
-    if (mounted) setState(() => _scanning = false);
   }
 
   Widget _buildConnectButton() {
@@ -387,14 +328,6 @@ class _ConnectionScreenState extends State<ConnectionScreen>
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        TextButton.icon(
-          onPressed: _openQrScanner,
-          icon: const Icon(Icons.qr_code_scanner, color: AppTheme.green),
-          label: const Text(
-            'Scan QR',
-            style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-          ),
-        ),
         IconButton(
           icon: const Icon(Icons.settings, color: AppTheme.textMuted),
           onPressed: () => Navigator.push(
@@ -406,17 +339,31 @@ class _ConnectionScreenState extends State<ConnectionScreen>
     );
   }
 
-  Future<void> _openQrScanner() async {
-    final manager = context.read<ConnectionManager>();
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const QrScannerScreen()),
-    );
-    _ipController.text = manager.ipAddress;
-    setState(() {});
+  void _handleConnect(BuildContext context, ConnectionManager manager) async {
+    // No IP yet in Wi-Fi mode? Skip straight to the QR scanner.
+    if (manager.mode == ConnectionMode.wifi && manager.ipAddress.isEmpty) {
+      final ok = await _openQrScanner(context);
+      if (!ok || !context.mounted) return;
+    }
+    await _doConnect(context, manager);
   }
 
-  void _handleConnect(BuildContext context, ConnectionManager manager) async {
+  /// Scan the PC QR and connect immediately on success.
+  Future<void> _scanAndConnect(BuildContext context) async {
+    final ok = await _openQrScanner(context);
+    if (!ok || !context.mounted) return;
+    await _doConnect(context, context.read<ConnectionManager>());
+  }
+
+  Future<bool> _openQrScanner(BuildContext context) async {
+    return await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const QrScannerScreen()),
+    ) ??
+        false;
+  }
+
+  Future<void> _doConnect(BuildContext context, ConnectionManager manager) async {
     await manager.connect();
     if (manager.state == ConnectionStatus.connected && context.mounted) {
       Navigator.pushReplacement(

@@ -240,7 +240,6 @@ class PulsePadGUI:
     _T_EDGE = "#3e3e48"
     _T_LIT = "#63b6ff"
     _T_ARM = "#3a3a42"
-    _T_SYM_IDLE = "#8a8a94"
     _T_BODY = "#232329"
     _T_RIM = "#3a3a44"
     _T_STICK = "#26262c"
@@ -300,24 +299,24 @@ class PulsePadGUI:
             ids[key] = c.create_oval(fx - 19, fy - 19, fx + 19, fy + 19,
                                      fill=C._T_IDLE, outline=C._T_EDGE,
                                      width=1)
+            ps = C._PS_COLORS[key]
             if key == "t":
                 ids[key + "_sym"] = c.create_polygon(
                     [(fx, fy - 8), (fx - 8, fy + 7), (fx + 8, fy + 7)],
-                    fill="", outline=C._T_SYM_IDLE, width=3)
+                    fill="", outline=ps, width=3)
             elif key == "o":
                 ids[key + "_sym"] = c.create_oval(fx - 8, fy - 8, fx + 8, fy + 8,
                                                   fill="",
-                                                  outline=C._T_SYM_IDLE, width=3)
+                                                  outline=ps, width=3)
             elif key == "c":
                 ids[key + "_sym"] = c.create_line(
-                    fx - 8, fy, fx + 8, fy, width=3, fill=C._T_SYM_IDLE)
+                    fx - 8, fy, fx + 8, fy, width=3, fill=ps)
                 ids[key + "_sym2"] = c.create_line(
-                    fx, fy - 8, fx, fy + 8, width=3, fill=C._T_SYM_IDLE)
+                    fx, fy - 8, fx, fy + 8, width=3, fill=ps)
             else:
                 ids[key + "_sym"] = c.create_rectangle(fx - 7, fy - 7, fx + 7,
                                                        fy + 7, fill="",
-                                                       outline=C._T_SYM_IDLE,
-                                                       width=3)
+                                                       outline=ps, width=3)
 
         # SELECT / START pills (center).
         ids["sel"] = self._round_rect(c, 284, 136, 322, 152, 8,
@@ -433,12 +432,12 @@ class PulsePadGUI:
                          width=2 if on else 1)
             c.itemconfig(ids[key + "_sym"],
                          fill="#ffffff" if on else "",
-                         outline="#ffffff" if on else self._T_SYM_IDLE)
+                         outline="#ffffff" if on else self._PS_COLORS[key])
             sym2 = ids.get(key + "_sym2")
             if sym2 is not None:
                 c.itemconfig(sym2,
                              fill="#ffffff" if on else "",
-                             outline="#ffffff" if on else self._T_SYM_IDLE)
+                             outline="#ffffff" if on else self._PS_COLORS[key])
 
         # SELECT / START.
         for name, flag in (("sel", P.BTN_SELECT), ("start", P.BTN_START)):
