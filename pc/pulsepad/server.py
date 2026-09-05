@@ -277,6 +277,10 @@ class PulsePadServer:
             return
         if ptype == P.TYPE_GAMEPAD:
             self._apply_gamepad(data)
+        elif ptype == P.TYPE_MOUSE:
+            self._apply_mouse(data)
+        elif ptype == P.TYPE_KEY:
+            self._apply_key(data)
         elif ptype == P.TYPE_PING:
             self._handle_ping(data, addr, via_udp)
         elif ptype == P.TYPE_HELLO:
@@ -295,6 +299,20 @@ class PulsePadServer:
         except ValueError:
             return
         self.gamepad.apply_gamepad(btn_lo, btn_hi, lx, ly, rx, ry, l2, r2)
+
+    def _apply_mouse(self, data):
+        try:
+            dx, dy, buttons = P.decode_mouse(data)
+        except ValueError:
+            return
+        self.gamepad.apply_mouse(dx, dy, buttons)
+
+    def _apply_key(self, data):
+        try:
+            keycode, pressed = P.decode_key(data)
+        except ValueError:
+            return
+        self.gamepad.apply_key(keycode, bool(pressed))
 
     def _handle_ping(self, data, addr, via_udp):
         try:

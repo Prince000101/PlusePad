@@ -29,11 +29,15 @@ const int kTypePing = 0x02;
 const int kTypePong = 0x03;
 const int kTypeHaptic = 0x04;
 const int kTypeHello = 0x05;
+const int kTypeMouse = 0x06;
+const int kTypeKey = 0x07;
 
 const int kGamepadSize = 13;
 const int kPingSize = 11;
 const int kPongSize = 11;
 const int kHapticSize = 4;
+const int kMouseSize = 6;
+const int kKeySize = 3;
 
 // Button flags - low byte
 const int kBtnA = 0x0001;
@@ -125,6 +129,32 @@ Uint8List encodePong(int timestampMs, [int seq = 0]) {
 }
 
 Uint8List encodeHello() => Uint8List.fromList([_header(kTypeHello)]);
+
+/// Shared virtual-keyboard key table (index in this list = wire keycode; must
+/// stay byte-identical with pc/pulsepad/protocol.py `KEYS`).
+const List<String> kKeys = [
+  'UP', 'DOWN', 'LEFT', 'RIGHT',
+  'W', 'A', 'S', 'D',
+  'SPACE', 'SHIFT', 'CTRL', 'ENTER', 'ESC',
+  'TAB', 'BACKSPACE', 'CAPS',
+];
+
+Uint8List encodeMouse(int dx, int dy, int buttons) {
+  final b = ByteData(kMouseSize);
+  b.setUint8(0, _header(kTypeMouse));
+  b.setInt16(1, dx, Endian.little);
+  b.setInt16(3, dy, Endian.little);
+  b.setUint8(5, buttons & 0xFF);
+  return b.buffer.asUint8List();
+}
+
+Uint8List encodeKey(int code, int pressed) {
+  final b = ByteData(kKeySize);
+  b.setUint8(0, _header(kTypeKey));
+  b.setUint8(1, code & 0xFF);
+  b.setUint8(2, pressed & 0x01);
+  return b.buffer.asUint8List();
+}
 
 int typeOf(Uint8List data) {
   if (data.isEmpty) return -1;

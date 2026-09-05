@@ -379,6 +379,20 @@ class ConnectionManager extends ChangeNotifier {
     }
   }
 
+  /// Send a relative mouse move + button mask (Wi-Fi or USB).
+  void sendMouse(int dx, int dy, int buttons) {
+    if (_state != ConnectionStatus.connected) return;
+    _send(p.encodeMouse(dx, dy, buttons));
+  }
+
+  /// Send a virtual-keyboard key press/release by layout name.
+  void sendKey(String name, bool pressed) {
+    if (_state != ConnectionStatus.connected) return;
+    final idx = p.kKeys.indexOf(name);
+    if (idx < 0) return;
+    _send(p.encodeKey(idx, pressed ? 1 : 0));
+  }
+
   _UdpTarget? get _udpTarget {
     if (_typedIp.isNotEmpty) {
       return _UdpTarget(InternetAddress(_typedIp),

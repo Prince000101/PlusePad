@@ -63,6 +63,30 @@ class TestProtocol(unittest.TestCase):
         self.assertEqual(P.type_of(hello), P.TYPE_HELLO)
         self.assertEqual(len(hello), 1)
 
+    def test_mouse_roundtrip(self):
+        packet = P.encode_mouse(-120, 300, 0b101)
+        self.assertEqual(len(packet), P.MOUSE_SIZE)
+        self.assertEqual(P.type_of(packet), P.TYPE_MOUSE)
+        dx, dy, buttons = P.decode_mouse(packet)
+        self.assertEqual((dx, dy, buttons), (-120, 300, 0b101))
+
+    def test_mouse_short_packet_raises(self):
+        with self.assertRaises(ValueError):
+            P.decode_mouse(b"\x16\x00")
+
+    def test_key_roundtrip(self):
+        self.assertIn("W", P.KEYS)
+        idx = P.KEYS.index("W")
+        packet = P.encode_key(idx, 1)
+        self.assertEqual(len(packet), P.KEY_SIZE)
+        self.assertEqual(P.type_of(packet), P.TYPE_KEY)
+        code, pressed = P.decode_key(packet)
+        self.assertEqual((code, pressed), (idx, 1))
+
+    def test_key_short_packet_raises(self):
+        with self.assertRaises(ValueError):
+            P.decode_key(b"\x17\x00")
+
     def test_unknown_type(self):
         packet = bytes([(P.PROTOCOL_VERSION << 4) | 0x0F])
         self.assertEqual(P.type_of(packet), 0x0F)

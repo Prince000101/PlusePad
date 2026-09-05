@@ -27,6 +27,12 @@ class _RecordingPad(VirtualGamepad):
     def apply_gamepad(self, *args):
         self.calls.append(args)
 
+    def apply_mouse(self, dx, dy, buttons):
+        self.calls.append(("mouse", dx, dy, buttons))
+
+    def apply_key(self, keycode, pressed):
+        self.calls.append(("key", keycode, pressed))
+
 
 class TestServer(unittest.TestCase):
     @classmethod
@@ -85,6 +91,31 @@ class TestServer(unittest.TestCase):
         self.assertEqual(btn_hi & P.BTN_R2, P.BTN_R2)
         self.assertEqual(lx, 1000)
         self.assertEqual(r2, 50)
+
+    def test_udp_mouse_flow(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.sendto(P.encode_mouse(-50, 60, 3), ("127.0.0.1", self.udp_port))
+        s.close()
+        deadline = time.time() + 2.0
+        while time.time() < deadline:
+            if any(c[0] == "mouse" for c in self.pad.calls):
+                break
+            time.sleep(0.01)
+        mouse = [c for c in self.pad.calls if c[0] == "mouse"][-1]
+        self.assertEqual(mouse[1:], (-50, 60, 3))
+
+    def test_udp_key_flow(self):
+        idx = P.KEYS.index("W")
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.sendto(P.encode_key(idx, 1), ("127.0.0.1", self.udp_port))
+        s.close()
+        deadline = time.time() + 2.0
+        while time.time() < deadline:
+            if any(c[0] == "key" for c in self.pad.calls):
+                break
+            time.sleep(0.01)
+        key = [c for c in self.pad.calls if c[0] == "key"][-1]
+        self.assertEqual(key[1:], (idx, True))
 
     def test_tcp_gamepad_flow_with_partial_reads(self):
         pkt = P.encode_gamepad(

@@ -19,6 +19,7 @@ import socket
 import sys
 import threading
 import time
+import queue
 
 try:
     import tkinter as tk
@@ -47,6 +48,7 @@ class PulsePadGUI:
         self.server = None
         self.pad = None
         self._log_target = "gui"   # route daemon prints into the GUI log
+        self._ui_q = queue.Queue()
         self._status_thread = None
 
         root.title("PulsePad Control Center")
@@ -71,6 +73,13 @@ class PulsePadGUI:
                                   command=self._toggle_sim, state="disabled")
         self.sim_btn.pack(side="left", padx=6)
         self._sim_stop = None
+
+        # One-time Linux uinput permission fix so the virtual gamepad works
+        # without any manual terminal work on locked-down machines.
+        self.enable_btn = ttk.Button(bar, text="⚠ Enable Gamepad",
+                                     command=self._enable_gamepad)
+        self.enable_btn.pack(side="left", padx=6)
+        self._enable_running = False
 
         self.status_lbl = ttk.Label(bar, text="● Stopped", foreground="gray")
         self.status_lbl.pack(side="right")
@@ -125,6 +134,7 @@ class PulsePadGUI:
         self.log.pack(fill="both", expand=True)
 
         self._update_status()
+        self.root.after(100, self._pump_ui)
         threading.Thread(target=self._status_loop, daemon=True).start()
 
     # ------------------------------------------------------------------ #
@@ -202,12 +212,32 @@ class PulsePadGUI:
 
     # ------------------------------------------------------------------ #
     def log_line(self, msg):
-        def _w():
-            self.log.configure(state="normal")
-            self.log.insert("end", msg + "\n")
-            self.log.see("end")
-            self.log.configure(state="disabled")
-        self.root.after(0, _w)
+        # Thread-safe: executed on the main loop via _pump_ui (called from
+        # daemon threads too, thanks to the builtins.print tee).
+        self._post_ui(lambda: self._log_line_now(msg))
+
+    def _log_line_now(self, msg):
+        self.log.configure(state="normal")
+        self.log.insert("end", msg + "\n")
+        self.log.see("end")
+        self.log.configure(state="disabled")
+
+    def _post_ui(self, fn):
+        self._ui_q.put(fn)
+
+    def _pump_ui(self):
+        # Main thread only (re-scheduled by root.after). Executes UI updates
+        # posted from any worker thread.
+        try:
+            while True:
+                fn = self._ui_q.get_nowait()
+                try:
+                    fn()
+                except Exception:
+                    pass
+        except queue.Empty:
+            pass
+        self.root.after(100, self._pump_ui)
 
     def _start(self):
         if self.server and self.server.running:
@@ -221,7 +251,9 @@ class PulsePadGUI:
         except Exception as e:
             self.log_line(f"  ! failed to start: {e}")
             return
+        self._finish_start()
 
+    def _finish_start(self):
         # Route server/daemon prints into the GUI log.
         server = self.server
         orig_print = print
@@ -236,10 +268,136 @@ class PulsePadGUI:
 
         self.server.start()
         self.log_line(f"  backend: {self.backend_name()}")
+        if self.pad and getattr(self.pad, "permission_denied", False):
+            self.log_line("  ! virtual gamepad needs one-time permission. "
+                          "Click 'Enable Gamepad' to fix it automatically.")
         self.start_btn.config(state="disabled")
         self.stop_btn.config(state="normal")
         self.sim_btn.config(state="normal")
         self._update_status()
+
+    # ------------------------------------------------------------------ #
+    # One-time Linux uinput permission fix (no manual terminal work).
+    # Installs a persistent udev rule so the virtual gamepad works on any
+    # Linux box and survives reboots, using the OS's normal & convenient
+    # privilege prompt (pkexec/polkit first, then sudo).
+    # ------------------------------------------------------------------ #
+    def _enable_gamepad(self):
+        import subprocess
+        if self._enable_running:
+            return
+        if sys.platform.startswith("win"):
+            self.log_line("  ! Gamepad is already enabled on Windows backend.")
+            return
+        if sys.platform.startswith("darwin"):
+            self.log_line("  ! macOS has no uinput yet; gamepad backend is "
+                          "network-only on this OS.")
+            return
+        self._enable_running = True
+        self.enable_btn.config(state="disabled", text="⏳ Enabling...")
+        threading.Thread(target=self._do_enable, args=(subprocess,),
+                         daemon=True).start()
+
+    def _do_enable(self, subprocess):
+        rule = ('KERNEL=="uinput", GROUP="input", MODE="0666"\n'
+                'KERNEL=="uhid", GROUP="input", MODE="0666"\n')
+        script = (
+            "mkdir -p /etc/udev/rules.d && "
+            "printf '%s' " + _shell_quote(rule) + " > /etc/udev/rules.d/99-uinput.rules && "
+            "udevadm control --reload-rules; "
+            "udevadm trigger; "
+            "chmod 666 /dev/uinput 2>/dev/null; "
+            "chmod 666 /dev/uhid 2>/dev/null; "
+            "true"
+        )
+        try:
+            cmds = self._privileged_commands(script)
+            if not cmds:
+                self._log_async("  ! Need a privileged launcher to enable the "
+                                "gamepad. Install polkit (pkexec) or sudo.")
+                return
+            self._log_async("  requesting one-time system permission "
+                            "(once; never needed again on this PC)...")
+            last_err = "no privileged launcher output"
+            for cmd in cmds:
+                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT, text=True)
+                out, _ = proc.communicate(timeout=120)
+                if proc.returncode == 0:
+                    self._log_async("  ✓ uinput access granted. Restarting gamepad...")
+                    self._recreate_after_enable()
+                    return
+                last_err = (out or "no output").strip()
+            self._log_async("  ! Enable failed: " + last_err)
+        except FileNotFoundError:
+            self._log_async("  ! No privileged launcher found (need 'pkexec' or "
+                            "'sudo'). Install polkit or run manually.")
+        except Exception as e:
+            self._log_async(f"  ! Enable error: {e}")
+        finally:
+            self._enable_running = False
+            self._post_ui(lambda:
+                self.enable_btn.config(state="normal", text="⚠ Enable Gamepad"))
+
+    def _privileged_commands(self, script):
+        # Prefer polkit (nice desktop dialog); try sudo when it is unavailable.
+        cmds = []
+        if self._which("pkexec"):
+            cmds.append(["pkexec", "bash", "-c", script])
+        if self._which("sudo"):
+            cmds.append(["bash", "-c", "sudo -S bash -c " + _shell_quote(script)])
+        return cmds
+
+    @staticmethod
+    def _which(exe):
+        import shutil
+        return shutil.which(exe)
+
+    def _recreate_after_enable(self):
+        # The user may have the daemon running with a null device. Rebuild the
+        # gamepad now that perms are fixed and reconnect.
+        def _rebuild():
+            was_running = bool(self.server and self.server.running)
+            try:
+                if was_running:
+                    self.server.stop()
+                    self.server = None
+                if self.pad:
+                    try:
+                        self.pad.close()
+                    except Exception:
+                        pass
+                self.pad = VirtualGamepad(backend="auto")
+                if not self.pad.enabled:
+                    self._log_async(
+                        "  ! Still could not open /dev/uinput after enabling: "
+                        + (self.pad.last_error or "unknown"))
+                    self._post_ui(self._update_status)
+                    return
+                if was_running:
+                    self.server = PulsePadServer(self.pad)
+                    self.server.start()
+                    self._log_async("  ✓ Virtual gamepad enabled and running! "
+                                    "Reconnect your phone and press buttons.")
+                    self._post_ui(self._controls_running)
+                else:
+                    # Daemon was never started; just refresh the gamepad line.
+                    self._log_async("  ✓ Virtual gamepad ready. Click "
+                                    "'Start Daemon' to use it.")
+                    self._post_ui(self._update_status)
+            except Exception as e:
+                self._log_async(f"  ! restart error: {e}")
+        threading.Thread(target=_rebuild, daemon=True).start()
+
+    def _controls_running(self):
+        # Main thread only. Reflect "daemon running" on the toolbar buttons.
+        self.start_btn.config(state="disabled")
+        self.stop_btn.config(state="normal")
+        self.sim_btn.config(state="normal")
+        self._update_status()
+
+    def _log_async(self, msg):
+        self._post_ui(lambda: self.log_line(msg))
 
     def _stop(self):
         if not self.server:
@@ -324,6 +482,8 @@ class PulsePadGUI:
         if not self.pad:
             return "-"
         b = getattr(self.pad, "backend", "auto")
+        if getattr(self.pad, "permission_denied", False):
+            return "linux (needs Enable, see button ↑)"
         if not getattr(self.pad, "enabled", False):
             return f"{b} (unavailable)"
         return b
@@ -360,7 +520,7 @@ class PulsePadGUI:
         while True:
             time.sleep(0.5)
             try:
-                self._update_status()
+                self._post_ui(self._update_status)
             except Exception:
                 pass
 
@@ -387,6 +547,11 @@ def builtins_print_patch(tee):
     if _ORIG_PRINT is None:
         _ORIG_PRINT = builtins.print
     builtins.print = tee
+
+
+def _shell_quote(s):
+    """Single-quote a string for safe use inside a `sh -c` command line."""
+    return "'" + s.replace("'", "'\\''") + "'"
 
 
 def main():

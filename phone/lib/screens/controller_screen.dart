@@ -30,6 +30,8 @@ class _ControllerScreenState extends State<ControllerScreen>
   ControllerLayout _currentLayout = ControllerLayout.gamepad;
   bool _dpadMode = false;
   bool _menuOpen = false;
+  int _mouseButtons = 0;
+  Offset? _touchLast;
 
   @override
   void initState() {
@@ -64,8 +66,17 @@ class _ControllerScreenState extends State<ControllerScreen>
   // ------------------------------- inputs ------------------------------ //
   void _setButton(String name, bool pressed) {
     final cm = _cm();
-    if (cm.controller.setButton(name, pressed)) cm.pushState();
+    final c = cm.controller;
+    var changed = c.setButton(name, pressed);
+    if (name == 'L2' || name == 'R2') {
+      // Bumpers are digital taps, but also drive the analog trigger axis so
+      // analog-aware games see the full 0..255 range on ABS_Z/ABS_RZ.
+      changed = c.setTrigger(name, pressed ? 1.0 : 0.0) || changed;
+    }
+    if (changed) cm.pushState();
   }
+
+  void _sendKey(String name, bool pressed) => _cm().sendKey(name, pressed);
 
   void _setAxis(String name, double v) {
     final cm = _cm();
@@ -696,7 +707,26 @@ class _ControllerScreenState extends State<ControllerScreen>
         children: [
           Expanded(
             child: GestureDetector(
-              onPanUpdate: (_) {},
+              onPanStart: (d) {
+                setState(() => _mouseButtons = _mouseButtons | 0x01);
+                _touchLast = d.localPosition;
+                _cm().sendMouse(0, 0, _mouseButtons);
+              },
+              onPanUpdate: (d) {
+                final last = _touchLast;
+                _touchLast = d.localPosition;
+                if (last != null) _sendMouseDelta(d.localPosition - last);
+              },
+              onPanEnd: (_) {
+                setState(() => _mouseButtons = _mouseButtons & ~0x01);
+                _touchLast = null;
+                _cm().sendMouse(0, 0, _mouseButtons);
+              },
+              onPanCancel: () {
+                setState(() => _mouseButtons = _mouseButtons & ~0x01);
+                _touchLast = null;
+                _cm().sendMouse(0, 0, _mouseButtons);
+              },
               child: Container(
                 decoration: AppTheme.glass(radius: 24),
                 child: const Center(
@@ -714,12 +744,47 @@ class _ControllerScreenState extends State<ControllerScreen>
               const SizedBox(width: 16),
               _pill('START'),
               const SizedBox(width: 16),
-              _pill('LMB'),
+              _mouseButtonPill('LMB', 1),
               const SizedBox(width: 16),
-              _pill('RMB'),
+              _mouseButtonPill('RMB', 2),
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  void _sendMouseDelta(Offset delta) {
+    final dx = (delta.dx * 3).round().clamp(-127, 127);
+    final dy = (delta.dy * 3).round().clamp(-127, 127);
+    if (dx == 0 && dy == 0) return;
+    _cm().sendMouse(dx, dy, _mouseButtons);
+  }
+
+  Widget _mouseButtonPill(String label, int bit) {
+    final active = (_mouseButtons & bit) != 0;
+    return GestureDetector(
+      onTap: () {
+        setState(() => _mouseButtons ^= bit);
+        _cm().sendMouse(0, 0, _mouseButtons);
+      },
+      child: Container(
+        width: 52,
+        height: 30,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: active ? AppTheme.accentA.withOpacity(0.5) : null,
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(
+              color: active ? AppTheme.accentB : AppTheme.hairline,
+              width: 1.2),
+        ),
+        child: Text(label,
+            style: TextStyle(
+                fontSize: 8,
+                color: Colors.white.withOpacity(active ? 1 : 0.7),
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.4)),
       ),
     );
   }
@@ -744,8 +809,9 @@ class _ControllerScreenState extends State<ControllerScreen>
 
   Widget _buildKeyboardKey(String key, double size) {
     return GestureDetector(
-      onTapDown: (_) => _setButton(key, true),
-      onTapUp: (_) => _setButton(key, false),
+      onTapDown: (_) => _sendKey(key, true),
+      onTapUp: (_) => _sendKey(key, false),
+      onTapCancel: () => _sendKey(key, false),
       child: Container(
         width: size,
         height: size,
@@ -933,8 +999,8 @@ class _ControllerScreenState extends State<ControllerScreen>
               if (active)
                 const Icon(Icons.check, size: 18, color: AppTheme.accentB),
               if (!enabled && !active)
-                const Text('Build one',
-                    style: TextStyle(
+                Text(layout == ControllerLayout.custom ? 'Build one' : 'Soon',
+                    style: const TextStyle(
                         fontSize: 10, color: Colors.white30)),
             ],
           ),

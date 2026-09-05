@@ -30,6 +30,18 @@ from . import protocol as P
 TL2_PRESS = 32
 TL2_RELEASE = 8
 
+# Virtual keyboard: layout key name (index into protocol.KEYS) -> uinput
+# attribute name to emit. Attribute names stay strings so `uinput` is imported
+# lazily at emit time on Linux only.
+_KEY_ATTR = {
+    "UP": "KEY_UP", "DOWN": "KEY_DOWN",
+    "LEFT": "KEY_LEFT", "RIGHT": "KEY_RIGHT",
+    "W": "KEY_W", "A": "KEY_A", "S": "KEY_S", "D": "KEY_D",
+    "SPACE": "KEY_SPACE", "SHIFT": "KEY_LEFTSHIFT",
+    "CTRL": "KEY_LEFTCTRL", "ENTER": "KEY_ENTER", "ESC": "KEY_ESC",
+    "TAB": "KEY_TAB", "BACKSPACE": "KEY_BACKSPACE", "CAPS": "KEY_CAPSLOCK",
+}
+
 
 def _prepare_events():
     """Return the uinput event list (Linux backend)."""
@@ -40,6 +52,13 @@ def _prepare_events():
         uinput.BTN_TL2, uinput.BTN_TR2,
         uinput.BTN_THUMBL, uinput.BTN_THUMBR,
         uinput.BTN_SELECT, uinput.BTN_START,
+        uinput.REL_X, uinput.REL_Y,
+        uinput.BTN_LEFT, uinput.BTN_RIGHT, uinput.BTN_MIDDLE,
+        uinput.KEY_UP, uinput.KEY_DOWN, uinput.KEY_LEFT, uinput.KEY_RIGHT,
+        uinput.KEY_W, uinput.KEY_A, uinput.KEY_S, uinput.KEY_D,
+        uinput.KEY_SPACE, uinput.KEY_LEFTSHIFT, uinput.KEY_LEFTCTRL,
+        uinput.KEY_ENTER, uinput.KEY_ESC,
+        uinput.KEY_TAB, uinput.KEY_BACKSPACE, uinput.KEY_CAPSLOCK,
         uinput.ABS_Z + (0, 255, 0, 0),
         uinput.ABS_RZ + (0, 255, 0, 0),
         uinput.ABS_HAT0X + (-1, 1, 0, 0),
@@ -79,6 +98,8 @@ class VirtualGamepad:
         self.name = name
         self.backend = backend
         self.enabled = False
+        self.permission_denied = False
+        self.last_error = None
         self._device = None
 
         # Cached last state so we only emit on change (less bus noise / latency
@@ -88,6 +109,7 @@ class VirtualGamepad:
         self._last_axes = None
         self._l2_btn = 0
         self._r2_btn = 0
+        self._last_mouse_buttons = 0
 
         self._create(backend, vendor, product)
 
@@ -111,12 +133,16 @@ class VirtualGamepad:
                 self._linux = False
             self.enabled = True
         except Exception as e:
+            self.last_error = str(e)
+            self.permission_denied = ("Permission denied" in str(e)
+                                      or "Errno 13" in str(e)
+                                      or "Operation not permitted" in str(e))
             print(f"[warn] {backend} virtual gamepad unavailable ({e}). "
                   f"Running without a virtual device (daemon server still works).")
             if sys.platform.startswith("linux") and "uinput" in str(e):
                 print("[hint] Linux: allow access to /dev/uinput with:  "
-                      "sudo chmod 666 /dev/uinput   (or run the included "
-                      "scripts/setup_linux_input.sh once for a permanent fix)")
+                      "sudo chmod 666 /dev/uinput   (or use the app's "
+                      "'Enable Gamepad' button for a one-time fix)")
             self._device = NullDevice()
             self._linux = False
             self.enabled = False
@@ -124,8 +150,7 @@ class VirtualGamepad:
     def _create_linux(self, name):
         import uinput  # raises ImportError if not installed
         return uinput.Device(_prepare_events(), name=name,
-                             vendor=self._vendor if False else 0x0B05,
-                             product=0x4500)
+                             vendor=0x0B05, product=0x4500)
 
     def _create_windows(self, name):
         # ViGEm is asynchronous; we keep a light wrapper that is created here.
@@ -155,15 +180,22 @@ class VirtualGamepad:
             return
 
         if buttons_lo != self._last_btn_lo or buttons_hi != self._last_btn_hi:
-            keys = [
+            lo_keys = [
                 ("BTN_A", P.BTN_A), ("BTN_B", P.BTN_B),
                 ("BTN_X", P.BTN_X), ("BTN_Y", P.BTN_Y),
                 ("BTN_TL", P.BTN_L1), ("BTN_TR", P.BTN_R1),
                 ("BTN_SELECT", P.BTN_SELECT), ("BTN_START", P.BTN_START),
+            ]
+            hi_keys = [
+                ("BTN_TL2", P.BTN_L2), ("BTN_TR2", P.BTN_R2),
                 ("BTN_THUMBL", P.BTN_L3), ("BTN_THUMBR", P.BTN_R3),
             ]
-            for code, flag in keys:
+            for code, flag in lo_keys:
                 self._emit(self._uinput_code(code), 1 if buttons_lo & flag else 0)
+            for code, flag in hi_keys:
+                self._emit(self._uinput_code(code), 1 if buttons_hi & flag else 0)
+            self._l2_btn = 1 if buttons_hi & P.BTN_L2 else 0
+            self._r2_btn = 1 if buttons_hi & P.BTN_R2 else 0
 
             # D-pad -> HAT
             hat_x = (1 if buttons_hi & P.BTN_DPAD_RIGHT else 0) - \
@@ -178,8 +210,8 @@ class VirtualGamepad:
 
         axes = (lx, ly, rx, ry, l2, r2)
         if axes != self._last_axes:
-            l2_now = 1 if l2 >= TL2_PRESS else 0
-            r2_now = 1 if r2 >= TL2_PRESS else 0
+            l2_now = int(self._l2_btn or l2 >= TL2_PRESS)
+            r2_now = int(self._r2_btn or r2 >= TL2_PRESS)
             if l2_now != self._l2_btn:
                 self._emit(self._uinput_code("BTN_TL2"), l2_now)
                 self._l2_btn = l2_now
@@ -193,6 +225,34 @@ class VirtualGamepad:
                 self._emit(self._uinput_code(code), val)
             self._last_axes = axes
 
+        self._sync()
+
+    # ------------------------------------------------------------------ #
+    def apply_mouse(self, dx, dy, buttons=0):
+        if not self.enabled or not self._device:
+            return
+        if dx or dy:
+            self._emit(self._uinput_code("REL_X"), dx)
+            self._emit(self._uinput_code("REL_Y"), dy)
+        if buttons != self._last_mouse_buttons:
+            for bit, name in ((1, "BTN_LEFT"), (2, "BTN_RIGHT"),
+                              (4, "BTN_MIDDLE")):
+                self._emit(self._uinput_code(name), 1 if buttons & bit else 0)
+            self._last_mouse_buttons = buttons
+        self._sync()
+
+    def apply_key(self, keycode, pressed):
+        if not self.enabled or not self._device:
+            return
+        try:
+            name = P.KEYS[keycode]
+        except (IndexError, TypeError):
+            return
+        attr = _KEY_ATTR.get(name)
+        if not attr:
+            return
+        value = 1 if pressed else 0
+        self._emit(self._uinput_code(attr), value)
         self._sync()
 
     # ------------------------------------------------------------------ #

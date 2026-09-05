@@ -47,6 +47,8 @@ TYPE_PING = 0x02
 TYPE_PONG = 0x03
 TYPE_HAPTIC = 0x04
 TYPE_HELLO = 0x05  # client -> server identification / discovery request
+TYPE_MOUSE = 0x06  # relative mouse move + button mask
+TYPE_KEY = 0x07    # virtual-keyboard press/release
 
 # Button flags (BtnLo)
 BTN_A = 0x0001
@@ -71,6 +73,8 @@ GAMEPAD_SIZE = 13
 PING_SIZE = 11
 PONG_SIZE = 11
 HAPTIC_SIZE = 4
+MOUSE_SIZE = 6
+KEY_SIZE = 3
 
 # Axis / trigger mapping keys (used by the virtual device layer)
 AXIS_LX = "LX"
@@ -100,6 +104,13 @@ BTN_NAMES_HI = {
     "DPAD_LEFT": BTN_DPAD_LEFT,
     "DPAD_RIGHT": BTN_DPAD_RIGHT,
 }
+
+# Shared virtual-keyboard key table (index in this list = wire keycode, and it
+# must stay byte-identical with phone/lib/services/protocol.dart).
+KEYS = ["UP", "DOWN", "LEFT", "RIGHT",
+        "W", "A", "S", "D",
+        "SPACE", "SHIFT", "CTRL", "ENTER", "ESC",
+        "TAB", "BACKSPACE", "CAPS"]
 
 
 def _header(pkt_type: int) -> bytes:
@@ -164,6 +175,32 @@ def decode_haptic(data: bytes):
 
 def encode_hello() -> bytes:
     return bytes([(PROTOCOL_VERSION << 4) | TYPE_HELLO])
+
+
+def encode_mouse(dx: int, dy: int, buttons: int = 0) -> bytes:
+    return struct.pack("<BhhB", (PROTOCOL_VERSION << 4) | TYPE_MOUSE,
+                       dx, dy, buttons & 0xFF)
+
+
+def decode_mouse(data: bytes):
+    """Decode a MOUSE packet -> (dx, dy, buttons)."""
+    if len(data) < MOUSE_SIZE:
+        raise ValueError("MOUSE packet too short")
+    _, dx, dy, buttons = struct.unpack_from("<BhhB", data, 0)
+    return dx, dy, buttons
+
+
+def encode_key(keycode: int, pressed: int) -> bytes:
+    return struct.pack("<BBB", (PROTOCOL_VERSION << 4) | TYPE_KEY,
+                       keycode & 0xFF, pressed & 0x01)
+
+
+def decode_key(data: bytes):
+    """Decode a KEY packet -> (keycode, pressed)."""
+    if len(data) < KEY_SIZE:
+        raise ValueError("KEY packet too short")
+    _, keycode, pressed = struct.unpack_from("<BBB", data, 0)
+    return keycode, pressed
 
 
 def type_of(data: bytes) -> int:
