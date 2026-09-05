@@ -265,6 +265,19 @@ class TestServer(unittest.TestCase):
         s_udp.close()
         time.sleep(0.3)
 
+    def test_restart_after_stop_rebinds_same_ports(self):
+        # stop() must release the listen ports before returning; otherwise an
+        # immediate restart fails with "Address already in use" (regression:
+        # listener threads used to keep the sockets reserved for ~0.5s).
+        srv = PulsePadServer(self.pad, tcp_port=15205, udp_port=15206,
+                             discovery_port=15207)
+        srv.start()
+        time.sleep(0.2)
+        srv.stop()
+        srv.start()
+        time.sleep(0.2)
+        srv.stop()
+
 
 from pulsepad.server import parse_beacon  # noqa: E402
 

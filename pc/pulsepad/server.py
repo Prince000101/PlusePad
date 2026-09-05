@@ -149,6 +149,13 @@ class PulsePadServer:
             self._tcp_clients.clear()
         with self._udp_peers_lock:
             self._udp_peers.clear()
+        # Wait for the listener threads to wake (closed sockets -> OSError, or
+        # the 0.5s recv/accept timeout) and exit, so the ports are actually
+        # released before stop() returns. Otherwise an immediate restart fails
+        # with "Address already in use".
+        for t in (self._tcp_thread, self._udp_thread, self._disc_thread):
+            if t:
+                t.join(timeout=1.0)
 
     @property
     def client_count(self) -> int:
