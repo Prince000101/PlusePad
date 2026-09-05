@@ -14,11 +14,12 @@ No extra dependencies: uses Python's built-in Tkinter.
 """
 
 import ipaddress
+import os
+import queue
 import socket
 import sys
 import threading
 import time
-import queue
 
 try:
     import tkinter as tk
@@ -611,10 +612,15 @@ class PulsePadGUI:
 
     def _do_enable(self, subprocess):
         rule = ('KERNEL=="uinput", GROUP="input", MODE="0666"\n'
-                'KERNEL=="uhid", GROUP="input", MODE="0666"\n')
+                'KERNEL=="uhid", GROUP="input", MODE="0666"\n'
+                'KERNEL=="event*", SUBSYSTEM=="input", '
+                'ATTRS{name}=="PulsePad*", MODE="0666", OPTIONS+="nowatch"\n'
+                'KERNEL=="js*", SUBSYSTEM=="input", '
+                'ATTRS{name}=="PulsePad*", MODE="0666", OPTIONS+="nowatch"\n')
         script = (
             "mkdir -p /etc/udev/rules.d && "
-            "printf '%s' " + _shell_quote(rule) + " > /etc/udev/rules.d/99-uinput.rules && "
+            "printf '%s' " + _shell_quote(rule) +
+            " > /etc/udev/rules.d/99-uinput.rules && "
             "udevadm control --reload-rules; "
             "udevadm trigger; "
             "chmod 666 /dev/uinput 2>/dev/null; "
@@ -663,6 +669,27 @@ class PulsePadGUI:
     def _which(exe):
         import shutil
         return shutil.which(exe)
+
+    def _auto_ensure_input(self):
+        # Called automatically at startup: on first run on Linux the release
+        # app installs the udev rules itself (one pkexec/sudo prompt) so a
+        # double-clicked binary works with no manual terminal steps.  Skips
+        # silently once the rules are present, and never overlaps a manual
+        # 'Enable Gamepad' click.
+        import subprocess
+        if not sys.platform.startswith("linux") or self._enable_running:
+            return
+        rules_file = "/etc/udev/rules.d/99-uinput.rules"
+        try:
+            with open(rules_file) as f:
+                if "PulsePad" in f.read():
+                    return  # already configured
+        except OSError:
+            pass
+        self._log_async("  first run: checking virtual-gamepad permission...")
+        self._enable_running = True  # guard: overlaps `_do_enable`'s finally
+        threading.Thread(target=self._do_enable, args=(subprocess,),
+                         daemon=True).start()
 
     def _recreate_after_enable(self):
         # The user may have the daemon running with a null device. Rebuild the
@@ -813,7 +840,8 @@ def main():
         ttk.Style().theme_use("clam")
     except Exception:
         pass
-    PulsePadGUI(root)
+    gui = PulsePadGUI(root)
+    gui._auto_ensure_input()
     root.mainloop()
 
 

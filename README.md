@@ -12,10 +12,10 @@ Free • Open source • Cross-platform (Windows / Linux / macOS) • No account
 - **Full PS2 / PSP pad** — D-pad, L1/R1/L2/R2 (analog + digital), L3/R3, SELECT/START, dual analog sticks.
 - **Works on every PC** — Linux `uinput`, Windows ViGEmBus, macOS; graceful fallback if no driver.
 - **Hassle-free connection** — one-tap Wi-Fi **auto-discovery** *or* **QR scan** of the PC screen (auto-fills IP + ports) *or* ultra-stable USB via `adb reverse`.
-- **Zero-config desktop GUI** — a **Control Center** window to start/stop the daemon, watch live connection status & latency, **display a QR code** you scan with the phone to connect instantly, and a **Simulate Phone** button that streams a fake controller so you can test the whole pipeline without a device. Closing the window stops the daemon completely.
+- **Zero-config desktop GUI** — a **Control Center** window to start/stop the daemon, watch live connection status & latency, **display a QR code** you scan with the phone to connect instantly, plus a built-in **gamepad + keyboard tester** that lights up every pressed button/stick/key. On Linux the first launch **prompts once (pkexec/sudo) to install the input rules itself** — no terminal needed. Closing the window stops the daemon completely.
 - **Auto-reconnect** — link recovers automatically; real PING/PONG latency display.
-- **Haptic feedback** — rumble support, plus Gamepad / PSP / PS5 / Mouse / Keyboard layouts on the phone.
-- **Tested** — 24 daemon unit tests (real sockets) + Flutter analyze clean & widget tests green.
+- **Haptic feedback** — rumble support plus a click sound on every button press (toggle in Settings), and selectable layouts: the **default PS2-style controller**, Mouse, Keyboard, and My Custom.
+- **Tested** — 35 daemon unit tests (real sockets) + Flutter analyze clean & widget tests green.
 
 ---
 
@@ -43,7 +43,7 @@ The app sends **complete snapshots** (no history / ordering) — a dropped packe
 phone/                           # Flutter (Dart) — the Android controller app
   lib/services/protocol.dart          byte-compatible binary protocol
   lib/services/connection_manager.dart  UDP/TCP, discovery, reconnect, latency
-  lib/screens/controller_screen.dart    gamepad/PSP/PS5/mouse/keyboard layouts
+  lib/screens/controller_screen.dart    default PS2-style controller + mouse + keyboard + custom layouts
   lib/screens/connection_screen.dart    connect + auto-discover UI
   lib/screens/qr_scanner_screen.dart    scan the PC's QR code to auto-fill IP/ports
 pc/                              # Python 3 daemon — creates the virtual gamepad
@@ -53,7 +53,7 @@ pc/                              # Python 3 daemon — creates the virtual gamep
   pulsepad/server.py               TCP/UDP/discovery server + haptics
   pulsepad/virtual_device.py       cross-platform virtual gamepad backends
   pulsepad/qr_config.py            shared QR connection payload format
-  tests/                           24 unit tests (real loopback sockets)
+  tests/                           35 unit tests (real loopback sockets)
   packaging/                       PyInstaller spec + per-OS build scripts
 ```
 
@@ -75,6 +75,10 @@ python3 pulsepad_gui.py
 python  pulsepad_gui.py
 ```
 
+> 💡 **Linux first run:** the app prompts **once** (pkexec/sudo) to install a udev
+> rule that makes the virtual controller readable by any app/emulator. Accept it
+> and you'll never be asked again — zero manual steps.
+
 ### Option B — Headless CLI
 
 ```bash
@@ -88,16 +92,14 @@ python pulsedad.py --backend=windows
 > No sudo needed to test the server / Wi-Fi: add `--no-virtual-device`.
 
 **Live-test without a phone (no device needed):**
-The Control Center's **▶ Simulate Phone** button (or the CLI below) streams a
-fake controller over UDP exactly like the app, so you can verify the client
-count, latency and the virtual gamepad in a tester:
+The Control Center's **Gamepad / Keyboard tester** tabs (or `simulate_phone.py`
+below) show every button, stick and key lighting up as it reaches the daemon:
 
 ```bash
-# one-time: let your user create the virtual gamepad (Linux)
-sudo scripts/setup_linux_input.sh    # then run once:
-#   sudo chmod 666 /dev/uinput       # (script does this too)
+# only needed if you NEVER run the GUI: configure uinput + input access
+sudo scripts/setup_linux_input.sh
 
-# watch it with a gamepad tester (rotating stick + A button)
+# watch the raw virtual device (rotating stick + A button)
 sudo apt install joystick && jstest /dev/input/js0
 
 # CLI-only simulated phone (no GUI needed)
@@ -153,7 +155,30 @@ adb reverse tcp:5005 tcp:5005
 ```
 Then open the app, tap **Connect**, pick USB.
 
-Then choose a layout (Gamepad / PSP / PS5 / Mouse / Keyboard) and play.
+Then pick a layout on the phone — the default **Controller** (a classic PS2-style pad: ▲●✕■, L2 L1 · R1 R2) — or switch to **Mouse**, **Keyboard**, or **My Custom** — and play.
+
+---
+
+## 🎮 Emulators & the virtual controller (Linux)
+
+The daemon exposes **two** virtual devices:
+
+| Device | What it does |
+|--------|--------------|
+| `PulsePad Gamepad` | the controller — D-pad, dual sticks, analog + digital triggers, all face/shoulder buttons. **Games & emulators register this one.** |
+| `PulsePad Keyboard` | the phone's Keyboard layout (WASD / arrows / SPACE / …) injected as real keystrokes for games that only take a keyboard. |
+
+Emulators read the gamepad straight from `/dev/input/event*` (SDL2 — this is
+how PPSSPP, PCSX2 and Steam work). Two things must be true for them to see it:
+
+1. the **udev rules** are installed — done automatically on the GUI's first
+   run (one pkexec/sudo prompt), or manually with
+   `sudo scripts/setup_linux_input.sh`;
+2. the **daemon is running** (`▶ Start Daemon`).
+
+Then open the emulator's control-mapping screen, pick the device named
+**`PulsePad Gamepad`**, and bind your buttons — they line up 1:1 with a real
+PS2 pad. (PPSSPP: Settings → Controls → “Device”.)
 
 ---
 

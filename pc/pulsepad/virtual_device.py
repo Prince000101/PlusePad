@@ -43,8 +43,13 @@ _KEY_ATTR = {
 }
 
 
-def _prepare_events():
-    """Return the uinput event list (Linux backend)."""
+def _gamepad_events():
+    """uinput event list for the pure gamepad device (Linux backend).
+
+    Deliberately contains ONLY joystick axes/buttons: SDL2 (and therefore
+    PPSSPP/Steam/browsers) ignores evdev devices that also carry keyboard
+    keycodes or mouse buttons, so mouse/keys live on a separate device.
+    """
     import uinput
     return (
         uinput.BTN_A, uinput.BTN_B, uinput.BTN_X, uinput.BTN_Y,
@@ -52,13 +57,6 @@ def _prepare_events():
         uinput.BTN_TL2, uinput.BTN_TR2,
         uinput.BTN_THUMBL, uinput.BTN_THUMBR,
         uinput.BTN_SELECT, uinput.BTN_START,
-        uinput.REL_X, uinput.REL_Y,
-        uinput.BTN_LEFT, uinput.BTN_RIGHT, uinput.BTN_MIDDLE,
-        uinput.KEY_UP, uinput.KEY_DOWN, uinput.KEY_LEFT, uinput.KEY_RIGHT,
-        uinput.KEY_W, uinput.KEY_A, uinput.KEY_S, uinput.KEY_D,
-        uinput.KEY_SPACE, uinput.KEY_LEFTSHIFT, uinput.KEY_LEFTCTRL,
-        uinput.KEY_ENTER, uinput.KEY_ESC,
-        uinput.KEY_TAB, uinput.KEY_BACKSPACE, uinput.KEY_CAPSLOCK,
         uinput.ABS_Z + (0, 255, 0, 0),
         uinput.ABS_RZ + (0, 255, 0, 0),
         uinput.ABS_HAT0X + (-1, 1, 0, 0),
@@ -67,6 +65,20 @@ def _prepare_events():
         uinput.ABS_Y + (-32768, 32767, 0, 128),
         uinput.ABS_RX + (-32768, 32767, 0, 128),
         uinput.ABS_RY + (-32768, 32767, 0, 128),
+    )
+
+
+def _kbd_mouse_events():
+    """uinput event list for the keyboard+mouse device (Linux backend)."""
+    import uinput
+    return (
+        uinput.REL_X, uinput.REL_Y,
+        uinput.BTN_LEFT, uinput.BTN_RIGHT, uinput.BTN_MIDDLE,
+        uinput.KEY_UP, uinput.KEY_DOWN, uinput.KEY_LEFT, uinput.KEY_RIGHT,
+        uinput.KEY_W, uinput.KEY_A, uinput.KEY_S, uinput.KEY_D,
+        uinput.KEY_SPACE, uinput.KEY_LEFTSHIFT, uinput.KEY_LEFTCTRL,
+        uinput.KEY_ENTER, uinput.KEY_ESC,
+        uinput.KEY_TAB, uinput.KEY_BACKSPACE, uinput.KEY_CAPSLOCK,
     )
 
 
@@ -101,6 +113,7 @@ class VirtualGamepad:
         self.permission_denied = False
         self.last_error = None
         self._device = None
+        self._kbd_device = None
 
         # Cached last state so we only emit on change (less bus noise / latency
         # jitter, and avoids resending identical snapshots).
@@ -123,13 +136,15 @@ class VirtualGamepad:
 
         try:
             if backend == "linux":
-                self._device = self._create_linux(name=self.name)
+                self._device, self._kbd_device = self._create_linux(name=self.name)
                 self._linux = True
             elif backend == "windows":
                 self._device, self._vigem = self._create_windows(name=self.name)
+                self._kbd_device = NullDevice()
                 self._linux = False
             else:
                 self._device = NullDevice()
+                self._kbd_device = NullDevice()
                 self._linux = False
             self.enabled = True
         except Exception as e:
@@ -144,13 +159,17 @@ class VirtualGamepad:
                       "sudo chmod 666 /dev/uinput   (or use the app's "
                       "'Enable Gamepad' button for a one-time fix)")
             self._device = NullDevice()
+            self._kbd_device = NullDevice()
             self._linux = False
             self.enabled = False
 
     def _create_linux(self, name):
         import uinput  # raises ImportError if not installed
-        return uinput.Device(_prepare_events(), name=name,
-                             vendor=0x0B05, product=0x4500)
+        pad = uinput.Device(_gamepad_events(), name=name + " Gamepad",
+                            vendor=0x0B05, product=0x4500)
+        kbd = uinput.Device(_kbd_mouse_events(), name=name + " Keyboard",
+                            vendor=0x0B05, product=0x4500)
+        return pad, kbd
 
     def _create_windows(self, name):
         # ViGEm is asynchronous; we keep a light wrapper that is created here.
@@ -172,6 +191,14 @@ class VirtualGamepad:
             self._device.emit(code, value)
         except Exception as e:
             # Only warn once per burst is overkill; keep it simple.
+            pass
+
+    def _kbd_emit(self, code, value):
+        dev = self._kbd_device if getattr(self, "_linux", False) \
+            and self._kbd_device else self._device
+        try:
+            dev.emit(code, value)
+        except Exception:
             pass
 
     def apply_gamepad(self, buttons_lo, buttons_hi,
@@ -229,20 +256,20 @@ class VirtualGamepad:
 
     # ------------------------------------------------------------------ #
     def apply_mouse(self, dx, dy, buttons=0):
-        if not self.enabled or not self._device:
+        if not self.enabled:
             return
         if dx or dy:
-            self._emit(self._uinput_code("REL_X"), dx)
-            self._emit(self._uinput_code("REL_Y"), dy)
+            self._kbd_emit(self._uinput_code("REL_X"), dx)
+            self._kbd_emit(self._uinput_code("REL_Y"), dy)
         if buttons != self._last_mouse_buttons:
             for bit, name in ((1, "BTN_LEFT"), (2, "BTN_RIGHT"),
                               (4, "BTN_MIDDLE")):
-                self._emit(self._uinput_code(name), 1 if buttons & bit else 0)
+                self._kbd_emit(self._uinput_code(name), 1 if buttons & bit else 0)
             self._last_mouse_buttons = buttons
-        self._sync()
+        self._kbd_sync()
 
     def apply_key(self, keycode, pressed):
-        if not self.enabled or not self._device:
+        if not self.enabled:
             return
         try:
             name = P.KEYS[keycode]
@@ -252,8 +279,8 @@ class VirtualGamepad:
         if not attr:
             return
         value = 1 if pressed else 0
-        self._emit(self._uinput_code(attr), value)
-        self._sync()
+        self._kbd_emit(self._uinput_code(attr), value)
+        self._kbd_sync()
 
     # ------------------------------------------------------------------ #
     def _uinput_code(self, name):
@@ -271,16 +298,30 @@ class VirtualGamepad:
         except Exception:
             pass
 
+    def _kbd_sync(self):
+        dev = self._kbd_device if getattr(self, "_linux", False) \
+            and self._kbd_device else self._device
+        try:
+            fn = getattr(dev, "sync", None)
+            if fn:
+                fn()
+        except Exception:
+            pass
+
     def close(self):
-        if self.enabled and self._device is not None:
-            close = getattr(self._device, "close", None) or \
-                    getattr(self._device, "destroy", None)
-            if close:
-                try:
-                    close()
-                except Exception:
-                    pass
+        if self.enabled:
+            for dev in (self._device, self._kbd_device):
+                if dev is None:
+                    continue
+                close = getattr(dev, "close", None) or \
+                        getattr(dev, "destroy", None)
+                if close:
+                    try:
+                        close()
+                    except Exception:
+                        pass
         self._device = None
+        self._kbd_device = None
         self.enabled = False
 
     def __del__(self):

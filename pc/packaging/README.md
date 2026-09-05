@@ -33,6 +33,7 @@ Then copy `dist/PulsePad` (`.exe` / `.app`) to your Desktop, `~/bin`, or anywher
 ## Notes
 
 - **Linux prerequisites:** `python3-tk` and `pip3` — `sudo apt install python3-tk python3-pip`.
+- **Linux first run:** the app prompts **once** (via pkexec or sudo) to install a udev rule that makes the virtual controller readable by any app — needed for PPSSPP / PCSX2 / Steam to see `PulsePad Gamepad`. Afterwards it never asks again.
 - **First build on each OS is slow** (bundles the Python runtime + Tkinter); after that it's cached.
 - **Windows SmartScreen:** may warn on first run because the exe isn't code-signed. Click *More info → Run anyway*.
 - **macOS Gatekeeper:** if blocked, right-click the app → *Open*, or `xattr -dr com.apple.quarantine dist/PulsePad.app`.
