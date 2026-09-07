@@ -57,6 +57,21 @@ pc/                               Python 3 daemon -- creates the virtual gamepad
   packaging/                          PyInstaller spec + per-OS build scripts
 ```
 
+## Releases
+
+Downloads live on the [GitHub Releases](https://github.com/Prince000101/PlusePad/releases) page.  Which file you need:
+
+| File | What it is |
+|------|------------|
+| `PulsePad-2.1.1-linux-x86_64.tar.gz` | The PC Control Center app (daemon + GUI) for 64-bit Linux.  Extract it and run `PulsePad`. |
+| `PulsePad-phone-arm64-v8a.apk` | The Android app for most modern phones.  Use this unless you know your CPU. |
+| `PulsePad-phone-armeabi-v7a.apk` | The Android app for old 32-bit phones. |
+| `PulsePad-phone-x86_64.apk` | The Android app for emulators / tablets on Intel/AMD CPU. |
+
+`SHA256SUMS` (Linux) and `PulsePad-phone-SHA256SUMS` (Android) verify the
+downloads.  The APK still needs USB debugging enabled on the phone for the
+USB cable connection.
+
 ## PC setup
 
 ### Option A: desktop GUI
