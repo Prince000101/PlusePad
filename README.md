@@ -8,8 +8,29 @@ gamepad into Linux uinput or Windows ViGEmBus. Targets PS2 (PCSX2), PSP
 No accounts, no cloud. Windows / Linux / macOS (virtual gamepad is
 network-only on macOS).
 
+## Screenshots
+
+| Android phone app | PulsePad Control Center (Linux) |
+|---|---|
+| ![Phone controller](screenshots/phonecontrollerpage.jpeg) | ![PulsePad Control Center](screenshots/linuxpcapp.png) |
+
+The left shot is the phone controller (PlayStation-style pad). The right shot
+is the desktop Control Center with the gamepad/keyboard tester and USB walk
+through.
+
 ## Features
 
+- **Drop-in controller for any game or emulator.** PulsePad presents a
+  standard virtual gamepad, so PCSX2, PPSSPP, Steam, RetroArch, and anything
+  that takes a normal controller work directly - no per-game setup, no
+  remapping in the emulator required.
+- **True gamepad emulation, not keystrokes.** The virtual controller is a
+  real gamepad input device; it never presses keyboard keys, grabs focus, or
+  types into fields, so it can't conflict with your physical keyboard while
+  playing or typing.
+- **Works in browser controller test sites.** Because it registers as a
+  standard Gamepad (Gamepad API / gamepad.js), sites like gamepad-tester /
+  html5gamepad detect it as a real pad and show every button and stick.
 - Binary full-state snapshots, coalesced 250 Hz sampling (USB ~1-5 ms,
   Wi-Fi ~5-15 ms).
 - Playstation-style pad: D-pad, L1/R1/L2/R2 (analog + digital), L3/R3,
@@ -22,6 +43,10 @@ network-only on macOS).
 - Haptic feedback and a button-press click (toggle in phone Settings).
 - Controller layout: default Playstation-style pad, or a custom one built in
   the visual editor (gamepad buttons, keyboard keys, mouse actions).
+- Small installs: a single-file Linux binary (with a broken-down `PulsePad-phone-*.apk`
+  per device architecture at roughly 10-12 MB) - no store, no Google account.
+- Headless CLI daemon (`pulsedad.py`) for servers and auto-start setups.
+- Open source, offline, ad-free.
 - Tests: 38 daemon unit tests (real sockets) + Flutter analyze clean and
   widget tests green.
 
