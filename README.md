@@ -1,239 +1,199 @@
-# 🎮 PulsePad
+# PulsePad
 
-**Turn your Android phone into a zero-latency wireless game controller for your PC** — perfect for PS2 (PCSX2), PSP (PPSSPP), Steam, and any game that uses a standard gamepad.
+Turn an Android phone into a game controller for a PC. Uses a binary wire
+protocol over Wi-Fi (UDP) or USB (TCP via adb reverse) to feed a virtual
+gamepad into Linux uinput or Windows ViGEmBus. Targets PS2 (PCSX2), PSP
+(PPSSPP), Steam, and anything that takes a standard gamepad.
 
-Free • Open source • Cross-platform (Windows / Linux / macOS) • No accounts, no cloud, no bloat.
+No accounts, no cloud. Windows / Linux / macOS (virtual gamepad is
+network-only on macOS).
 
----
+## Features
 
-## ✨ Features
+- Binary full-state snapshots, coalesced 250 Hz sampling (USB ~1-5 ms,
+  Wi-Fi ~5-15 ms).
+- Playstation-style pad: D-pad, L1/R1/L2/R2 (analog + digital), L3/R3,
+  SELECT/START, dual analog sticks.
+- Wi-Fi auto-discovery, QR scan to fill IP + ports, or USB via `adb reverse`.
+- Desktop Control Center: start/stop the daemon, live status and latency,
+  QR display, and a gamepad + keyboard tester that lights up on input. On
+  first run it prompts once (pkexec/sudo) to install the input rules.
+- Auto-reconnect with PING/PONG latency readout.
+- Haptic feedback and a button-press click (toggle in phone Settings).
+- Controller layout: default Playstation-style pad, or a custom one built in
+  the visual editor (gamepad buttons, keyboard keys, mouse actions).
+- Tests: 38 daemon unit tests (real sockets) + Flutter analyze clean and
+  widget tests green.
 
-- **Real low latency** — self-contained binary protocol, coalesced 250 Hz sampling (USB ~1–5 ms, Wi-Fi ~5–15 ms).
-- **Full PS2 / PSP pad** — D-pad, L1/R1/L2/R2 (analog + digital), L3/R3, SELECT/START, dual analog sticks.
-- **Works on every PC** — Linux `uinput`, Windows ViGEmBus, macOS; graceful fallback if no driver.
-- **Hassle-free connection** — one-tap Wi-Fi **auto-discovery** *or* **QR scan** of the PC screen (auto-fills IP + ports) *or* ultra-stable USB via `adb reverse`.
-- **Zero-config desktop GUI** — a **Control Center** window to start/stop the daemon, watch live connection status & latency, **display a QR code** you scan with the phone to connect instantly, plus a built-in **gamepad + keyboard tester** that lights up every pressed button/stick/key. On Linux the first launch **prompts once (pkexec/sudo) to install the input rules itself** — no terminal needed. Closing the window stops the daemon completely.
-- **Auto-reconnect** — link recovers automatically; real PING/PONG latency display.
-- **Haptic feedback** — rumble support plus a click sound on every button press (toggle in Settings), and selectable layouts: the **default PS2-style controller**, Mouse, Keyboard, and My Custom.
-- **Tested** — 35 daemon unit tests (real sockets) + Flutter analyze clean & widget tests green.
-
----
-
-## 🧩 How it works
-
-```
-┌───────────────┐   USB (TCP:5005)   ┌──────────────────┐
-│  Phone App    │  ───────────────►  │  PC Daemon       │
-│  (Flutter)    │   Wi-Fi (UDP:5006) │  (pulsedad)      │
-└──────┬────────┘  Auto-find:54321   └────────┬─────────┘
-       │                                      │ uinput / ViGEm
-       │   13-byte full-state snapshot        ▼
-       └────────────────────────────►  Virtual Gamepad
-                                       (PCSX2, PPSSPP,
-                                        Steam, native games)
-```
-
-The app sends **complete snapshots** (no history / ordering) — a dropped packet never corrupts state; the very next packet is the full truth.
-
----
-
-## 📦 Project layout
+## How it works
 
 ```
-phone/                           # Flutter (Dart) — the Android controller app
+Phone app     -- TCP:5005 (USB, adb reverse) -->  PC daemon
+  (Flutter)   -- UDP:5006 (Wi-Fi)            -->  uinput / ViGEmBus
+              -- UDP:54321 (auto-discovery)  -->   virtual gamepad
+```
+
+Every GAMEPAD packet is a full snapshot, so a dropped packet never corrupts
+state; the next packet is already complete.
+
+## Project layout
+
+```
+phone/                            Flutter (Dart) -- the Android controller app
   lib/services/protocol.dart          byte-compatible binary protocol
   lib/services/connection_manager.dart  UDP/TCP, discovery, reconnect, latency
-  lib/screens/controller_screen.dart    default PS2-style controller + mouse + keyboard + custom layouts
+  lib/screens/controller_screen.dart    controller + custom-layout rendering
   lib/screens/connection_screen.dart    connect + auto-discover UI
-  lib/screens/qr_scanner_screen.dart    scan the PC's QR code to auto-fill IP/ports
-pc/                              # Python 3 daemon — creates the virtual gamepad
-  pulsedad.py                      headless CLI daemon
-  pulsepad_gui.py                  Control Center desktop GUI (Tkinter)
-  pulsepad/protocol.py             binary protocol
-  pulsepad/server.py               TCP/UDP/discovery server + haptics
-  pulsepad/virtual_device.py       cross-platform virtual gamepad backends
-  pulsepad/qr_config.py            shared QR connection payload format
-  tests/                           35 unit tests (real loopback sockets)
-  packaging/                       PyInstaller spec + per-OS build scripts
+  lib/screens/qr_scanner_screen.dart    scan the PC's QR code
+
+pc/                               Python 3 daemon -- creates the virtual gamepad
+  pulsepad_gui.py                     Control Center desktop GUI (Tkinter)
+  pulsedad.py                         headless CLI daemon
+  pulsepad/protocol.py                binary protocol
+  pulsepad/server.py                  TCP/UDP/discovery server + haptics
+  pulsepad/virtual_device.py          virtual gamepad backends (uinput / ViGEm)
+  pulsepad/qr_config.py               QR connection payload format
+  tests/                              38 unit tests (real loopback sockets)
+  packaging/                          PyInstaller spec + per-OS build scripts
 ```
 
----
+## PC setup
 
-## 🖥️ PC setup
-
-### Option A — Desktop GUI app (easiest, recommended)
-
-The **Control Center** GUI starts/stops the daemon, shows live status (server state, phone connected, latency, PC IP), and can **show a QR code** that encodes the PC's address + ports. Scan it with the phone app to connect instantly — no typing.
+### Option A: desktop GUI
 
 ```bash
 cd pc
-pip install -r requirements.txt        # only the lines matching your OS
+pip install -r requirements.txt
 
-# Linux / macOS:
-python3 pulsepad_gui.py
-# Windows:
-python  pulsepad_gui.py
+python3 pulsepad_gui.py      # Linux / macOS
+python  pulsepad_gui.py      # Windows
 ```
 
-> 💡 **Linux first run:** the app prompts **once** (pkexec/sudo) to install a udev
-> rule that makes the virtual controller readable by any app/emulator. Accept it
-> and you'll never be asked again — zero manual steps.
+The Control Center starts/stops the daemon, shows the PC address and live
+status, can display a QR code, and has a Gamepad / Keyboard tester. On the
+first run on Linux it prompts once (pkexec/sudo) to install a udev rule so
+any app can read the virtual controller.
 
-### Option B — Headless CLI
+### Option B: headless CLI
 
 ```bash
 cd pc
-# Linux (virtual pad via uinput):
-sudo python3 pulsedad.py                        # or: sudo chmod 666 /dev/uinput
-# Windows (install ViGEmBus, then):
-python pulsedad.py --backend=windows
+sudo python3 pulsedad.py                                 # Linux, virtual pad
+python pulsedad.py --backend=windows                     # Windows (ViGEmBus)
+python pulsedad.py --no-virtual-device                   # server only, no sudo
 ```
 
-> No sudo needed to test the server / Wi-Fi: add `--no-virtual-device`.
-
-**Live-test without a phone (no device needed):**
-The Control Center's **Gamepad / Keyboard tester** tabs (or `simulate_phone.py`
-below) show every button, stick and key lighting up as it reaches the daemon:
+Test the whole path without a phone:
 
 ```bash
-# only needed if you NEVER run the GUI: configure uinput + input access
-sudo scripts/setup_linux_input.sh
-
-# watch the raw virtual device (rotating stick + A button)
-sudo apt install joystick && jstest /dev/input/js0
-
-# CLI-only simulated phone (no GUI needed)
 cd pc && python3 simulate_phone.py --host 127.0.0.1
 ```
 
-### Option C — Package a standalone desktop app (no Python needed)
+### Option C: package a standalone app
 
-One command per OS produces a single portable app you can drop on the Desktop:
+One command per OS produces a single portable binary:
 
 ```bash
-# On Windows → dist/PulsePad.exe
-cd pc && cmd /c packaging/build_windows.bat
-
-# On macOS   → dist/PulsePad.app
-cd pc && ./packaging/build_mac.sh
-
-# On Linux   → dist/PulsePad (single executable)
-cd pc && ./packaging/build_linux.sh
+cd pc && cmd /c packaging/build_windows.bat      # Windows -> dist/PulsePad.exe
+cd pc && ./packaging/build_mac.sh                # macOS   -> dist/PulsePad.app
+cd pc && ./packaging/build_linux.sh              # Linux   -> dist/PulsePad
 ```
 
-Build on each OS to get that OS's binary. See [`packaging/README.md`](pc/packaging/README.md).
+See `packaging/README.md`.
 
----
-
-## 📱 Build & install the phone app
+## Build & install the phone app
 
 ```bash
 cd phone
 flutter pub get
-flutter build apk --release
-# APK output:  build/app/outputs/flutter-apk/app-release.apk
-# Install:     adb install build/app/outputs/flutter-apk/app-release.apk
+flutter build apk --release --split-per-abi
+# Per-ABI APKs: build/app/outputs/flutter-apk/app-{arm64-v8a,armeabi-v7a,x86_64}-release.apk
+adb install build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
 ```
 
 Or `flutter run` with a device connected.
 
----
+## Connect the phone
 
-## 🔗 Connect the phone
-
-**Wi-Fi (wireless, zero-config):**
+Wi-Fi:
 1. Phone and PC on the same network.
-2. Tap **Connect** — the app auto-discovers the PC (or enter the IP shown in the Control Center).
+2. Tap **Connect** in the app; it auto-discovers the PC (or type the IP shown
+   in the Control Center).
 
-**Wi-Fi via QR (no typing at all):**
+Wi-Fi via QR:
 1. In the Control Center click **Show QR**.
-2. On the phone tap **Scan QR** and point it at the PC screen — the app auto-fills the IP, ports and mode, then just tap **Connect**.
+2. On the phone tap **Scan QR** and point it at the PC screen; IP, ports and
+   mode are filled automatically, then tap **Connect**.
 
-**USB (lowest latency, no Wi-Fi):**
+USB:
 ```bash
 adb reverse tcp:5005 tcp:5005
 ```
-Then open the app, tap **Connect**, pick USB.
+Then in the app: **Connect**, pick USB. Requires USB debugging on the phone.
 
-Then pick a layout on the phone — the default **Controller** (a classic PS2-style pad: ▲●✕■, L2 L1 · R1 R2) — or switch to **Mouse**, **Keyboard**, or **My Custom** — and play.
+Pick a layout on the phone -- the default Playstation-style pad, or a custom
+layout from the visual editor -- and play.
 
----
+## Emulators and the virtual controller (Linux)
 
-## 🎮 Emulators & the virtual controller (Linux)
-
-The daemon exposes **two** virtual devices:
+The daemon exposes two virtual devices:
 
 | Device | What it does |
 |--------|--------------|
-| `PulsePad Gamepad` | the controller — D-pad, dual sticks, analog + digital triggers, all face/shoulder buttons. **Games & emulators register this one.** |
-| `PulsePad Keyboard` | the phone's Keyboard layout (WASD / arrows / SPACE / …) injected as real keystrokes for games that only take a keyboard. |
+| `PulsePad Gamepad` | the controller - D-pad, sticks, analog + digital triggers, all face/shoulder buttons. Games and emulators register this one. |
+| `PulsePad Keyboard` | keyboard keys (WASD / arrows / SPACE / ...) injected as real keystrokes for games that only take a keyboard. |
 
-Emulators read the gamepad straight from `/dev/input/event*` (SDL2 — this is
-how PPSSPP, PCSX2 and Steam work). Two things must be true for them to see it:
+Emulators read the gamepad via SDL2 from `/dev/input/event*`. For them to see
+it, the udev rules must be installed (done automatically on the GUI's first
+run, or with `sudo scripts/setup_linux_input.sh`) and the daemon must be
+running (`▶ Start Daemon`).
 
-1. the **udev rules** are installed — done automatically on the GUI's first
-   run (one pkexec/sudo prompt), or manually with
-   `sudo scripts/setup_linux_input.sh`;
-2. the **daemon is running** (`▶ Start Daemon`).
-
-Then open the emulator's control-mapping screen, pick the device named
-**`PulsePad Gamepad`**, and bind your buttons — they line up 1:1 with a real
-PS2 pad. (PPSSPP: Settings → Controls → “Device”.)
-
----
-
-## 🎮 Virtual controller mapping
+## Controller mapping
 
 | Input | uinput code |
 |-------|-------------|
 | A / B / X / Y | BTN_A / BTN_B / BTN_X / BTN_Y |
 | L1 / R1 | BTN_TL / BTN_TR |
-| L2 / R2 | ABS_Z / ABS_RZ (analog 0–255) **+** BTN_TL2 / BTN_TR2 (digital) |
+| L2 / R2 | ABS_Z / ABS_RZ (analog 0-255) + BTN_TL2 / BTN_TR2 (digital) |
 | SELECT / START | BTN_SELECT / BTN_START |
 | L3 / R3 | BTN_THUMBL / BTN_THUMBR |
 | D-pad | ABS_HAT0X / ABS_HAT0Y |
-| Sticks | ABS_X / ABS_Y / ABS_RX / ABS_RY (−32768..32767) |
+| Sticks | ABS_X / ABS_Y / ABS_RX / ABS_RY (-32768..32767) |
 
----
+## Protocol
 
-## 🔐 Protocol (binary, self-contained)
-
-Each message is delimited by a header byte: `PROTOCOL_VERSION(4) | TYPE(4)`. Multi-byte numbers are little-endian.
+Each packet starts with a header byte: `PROTOCOL_VERSION(4) | TYPE(4)`.
+Multi-byte numbers are little-endian.
 
 | Type | Byte | Size | Payload |
 |------|-----:|-----:|---------|
 | GAMEPAD | 1 | 13 | btns_lo, btns_hi, LX, LY, RX, RY (i16), L2, R2 (u8) |
-| PING | 2 | 11 | 8-byte random token |
+| PING | 2 | 11 | timestamp ms (i64), seq (u16) |
 | PONG | 3 | 11 | echoes the PING token |
-| HAPTIC | 4 | 4 | rumble amount |
-| HELLO | 5 | 1 | discovery request → beacon reply offers ports |
+| HAPTIC | 4 | 4 | duration / intensity / motor |
+| HELLO | 5 | 1 | discovery request; the beacon reply offers ports |
+| MOUSE | 6 | 6 | relative dx, dy (i16), buttons (u8) |
+| KEY | 7 | 3 | keycode (u8), pressed (u8) |
 
-Beacon: `"PPB1"` + udp_port(2,big) + tcp_port(2,big) + len + name.
-
----
-
-## 🧪 Running the tests
+## Running the tests
 
 ```bash
-# pc — 24 tests, real sockets, no root needed
-cd pc && python3 -m unittest discover -s tests -v
+# pc -- 38 tests, real sockets, no root needed
+cd pc && python3 -m unittest discover -s tests
 
-# app
+# phone
 cd phone && flutter analyze && flutter test
 ```
 
----
-
-## 🖥️ Platform support
+## Platform support
 
 | Platform | Virtual gamepad | Notes |
 |----------|-----------------|-------|
 | Linux | uinput | needs `/dev/uinput` (sudo) |
 | Windows | ViGEmBus | install bus + `pip install vigem-client` |
-| macOS | — (network only) | daemon runs; virtual pad not yet implemented |
-| Headless | none (null) | server / discovery still work — good for testing |
+| macOS | none (network only) | daemon runs; virtual pad not implemented |
+| Headless | none (null) | server / discovery still work |
 
----
+## License
 
-## 📄 License
-MIT — free to use, modify, and share.
+MIT

@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """PulsePad PC GUI (Tkinter).
 
-A small desktop window that lets you start and stop the PulsePad daemon and
-watch live connection status.  The daemon runs *inside* this app's process, so
-closing the window stops the background server completely -- no stray
-processes left behind.
+A small desktop window that starts/stops the PulsePad daemon and shows live
+connection status.  The daemon runs inside this process; closing the window
+stops it.
 
 Run:
     python3 gui.py            (Linux / macOS)
@@ -66,12 +65,18 @@ class PulsePadGUI:
                                    command=self._stop, state="disabled")
         self.stop_btn.pack(side="left", padx=6)
 
-        # One-time Linux uinput permission fix so the virtual gamepad works
-        # without any manual terminal work on locked-down machines.
+        # One-time Linux uinput permission fix for the virtual gamepad.
         self.enable_btn = ttk.Button(bar, text="⚠ Enable Gamepad",
                                      command=self._enable_gamepad)
         self.enable_btn.pack(side="left", padx=6)
         self._enable_running = False
+
+        # Wired (USB cable) one-click helper: sets up adb reverse so the phone
+        # connects to the PC over the cable with no IP needed.
+        self.usb_btn = ttk.Button(bar, text="⚡ USB (cable)",
+                                  command=self._usb_reverse)
+        self.usb_btn.pack(side="left", padx=6)
+        self._usb_running = False
 
         self.status_lbl = ttk.Label(bar, text="● Stopped", foreground="gray")
         self.status_lbl.pack(side="right")
@@ -97,6 +102,10 @@ class PulsePadGUI:
         ttk.Label(info, text=f"PC address (phone Wi-Fi): {ip}",
                   foreground="#666").grid(row=2, column=0, columnspan=2,
                                           sticky="w", pady=(6, 0))
+        ttk.Label(info, text="USB: enable USB debugging on the phone → "
+                             "plug in → click '⚡ USB (cable)' → phone 'USB' → Connect.",
+                  foreground="#666").grid(row=3, column=0, columnspan=2,
+                                          sticky="w", pady=(2, 0))
 
         # ---- QR connect ----
         qr_frame = ttk.LabelFrame(root, text="Connect by QR (Wi-Fi)", padding=8)
@@ -136,6 +145,10 @@ class PulsePadGUI:
                                     bg="#141419", highlightthickness=0)
         self.key_canvas.pack(padx=4, pady=4)
         self._tester_nb.add(_kb_tab, text="Keyboard")
+
+        _help_tab = ttk.Frame(self._tester_nb)
+        self._build_help(_help_tab)
+        self._tester_nb.add(_help_tab, text="Help")
 
         self._tester_ids = {}
         self._key_ids = {}
@@ -181,6 +194,94 @@ class PulsePadGUI:
         return "127.0.0.1"
 
     # ------------------------------------------------------------------ #
+    def _build_help(self, parent):
+        text = tk.Text(parent, width=78, height=17, relief="flat",
+                       bg="#101013", fg="#cfd3da", wrap="word",
+                       font=("TkDefaultFont", 10), padx=14, pady=12)
+        text.pack(fill="both", expand=True, padx=6, pady=6)
+        text.tag_configure("h", foreground="#6ea8fe", font=("TkDefaultFont", 11, "bold"))
+        text.tag_configure("b", font=("TkDefaultFont", 10, "bold"))
+        for line in self._help_lines():
+            tag = None
+            if line.startswith("## "):
+                tag = "h"
+            elif line.startswith("**"):
+                tag = "b"
+            text.insert("end", line + "\n", tag)
+        text.configure(state="disabled")
+
+    @staticmethod
+    def _help_lines():
+        return [
+            "## How to connect your phone to the PC",
+            "",
+            "**Wi-Fi (no cable):**",
+            "1. Put the phone and this PC on the SAME Wi-Fi network.",
+            "2. Click ▶ Start Daemon (top left).",
+            "3. On the phone app press Connect (Wi-Fi) or scan the QR code.",
+            "4. The phone finds the PC on its own — no IP to type.",
+            "",
+            "**USB cable (wired, lowest lag):**",
+            "1. On the phone: Settings → Developer options → turn ON",
+            "   'USB debugging' (enable Developer options first if hidden).",
+            "2. Plug the phone into the PC with a USB cable.",
+            "3. On the phone, allow the 'USB debugging' prompt (authorize this PC).",
+            "4. Click ▶ Start Daemon, then click ⚡ USB (cable) here once.",
+            "5. On the phone app press Connect → USB, then Connect.",
+            "",
+            "**Buttons at the top:**",
+            "• ▶ Start Daemon — starts listening on this PC (must be on).",
+            "• ■ Stop Daemon — stops it (closing the window also stops it).",
+            "• ⚠ Enable Gamepad — one-time: makes Windows/Linux see a gamepad.",
+            "• ⚡ USB (cable) — sets up the cable link (adb reverse).",
+            "• Show QR — a code the phone scans to connect over Wi-Fi.",
+            "",
+            "**Tester tabs:** Gamepad and Keyboard mirror whatever you press on",
+            "the phone, so you can see your inputs land on the PC live.",
+        ]
+
+    def _usb_reverse(self):
+        if self._usb_running:
+            return
+        import shutil
+        if not shutil.which("adb"):
+            self.log_line("  ! 'adb' not found. Install Android platform-tools,"
+                          " or use Wi-Fi instead.")
+            return
+        self._usb_running = True
+        self.usb_btn.config(state="disabled", text="⏳ adb...")
+        threading.Thread(target=self._do_usb_reverse, daemon=True).start()
+
+    def _do_usb_reverse(self):
+        import subprocess
+        tcp = "5005"
+        if self.server is not None:
+            tcp = str(self.server.tcp_port)
+        try:
+            subprocess.run(["adb", "reverse", f"tcp:{tcp}", f"tcp:{tcp}"],
+                           check=True, capture_output=True, text=True,
+                           timeout=30)
+            check = subprocess.run(["adb", "reverse", "--list"],
+                                   check=True, capture_output=True, text=True,
+                                   timeout=15).stdout
+            if f"tcp:{tcp}" in check:
+                self._log_async(f"  ✓ USB link ready (adb reverse tcp:{tcp}). "
+                                "On the phone: Connect → USB → Connect.")
+            else:
+                self._log_async("  ! adb did not confirm the reverse. "
+                                "Is the phone plugged in + debugging on?")
+        except FileNotFoundError:
+            self._log_async("  ! 'adb' not found on PATH.")
+        except subprocess.CalledProcessError:
+            self._log_async("  ! adb reverse failed. Plug in the phone and "
+                            "allow USB debugging, then try again.")
+        except Exception as e:
+            self._log_async(f"  ! USB error: {e}")
+        finally:
+            self._usb_running = False
+            self._post_ui(lambda:
+                self.usb_btn.config(state="normal", text="⚡ USB (cable)"))
+
     def _toggle_qr(self):
         if self.qr_visible:
             self.qr_canvas.pack_forget()
@@ -588,10 +689,7 @@ class PulsePadGUI:
         self._update_status()
 
     # ------------------------------------------------------------------ #
-    # One-time Linux uinput permission fix (no manual terminal work).
-    # Installs a persistent udev rule so the virtual gamepad works on any
-    # Linux box and survives reboots, using the OS's normal & convenient
-    # privilege prompt (pkexec/polkit first, then sudo).
+    # One-time Linux uinput permission fix (installs a udev rule).
     # ------------------------------------------------------------------ #
     def _enable_gamepad(self):
         import subprocess
@@ -633,7 +731,7 @@ class PulsePadGUI:
                                 "gamepad. Install polkit (pkexec) or sudo.")
                 return
             self._log_async("  requesting one-time system permission "
-                            "(once; never needed again on this PC)...")
+                            "(persists on this PC)...")
             last_err = "no privileged launcher output"
             for cmd in cmds:
                 proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
@@ -656,7 +754,7 @@ class PulsePadGUI:
                 self.enable_btn.config(state="normal", text="⚠ Enable Gamepad"))
 
     def _privileged_commands(self, script):
-        # Prefer polkit (nice desktop dialog); try sudo when it is unavailable.
+        # Prefer polkit (desktop dialog); fall back to sudo.
         cmds = []
         if self._which("pkexec"):
             cmds.append(["pkexec", "bash", "-c", script])

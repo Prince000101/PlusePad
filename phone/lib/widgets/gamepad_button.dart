@@ -77,7 +77,7 @@ class _GamepadButtonState extends State<GamepadButton>
             : AppTheme.pad(radius: widget.round ? 999 : AppTheme.radiusSmall);
 
     final Color fg = activated
-        ? AppTheme.accent
+        ? Colors.white
         : widget.highlight
             ? AppTheme.accent
             : AppTheme.textPrimary;
@@ -106,7 +106,9 @@ class _GamepadButtonState extends State<GamepadButton>
                     if (widget.icon != null)
                       Icon(widget.icon,
                           size: widget.fontSize + 6,
-                          color: activated ? AppTheme.accent : AppTheme.textSecondary),
+                          color: activated
+                              ? Colors.white
+                              : AppTheme.textSecondary),
                     Text(
                       widget.label,
                       style: TextStyle(

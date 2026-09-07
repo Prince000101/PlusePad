@@ -52,7 +52,17 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["tests", "unittest", "pytest"],
+    excludes=[
+        "tests",
+        "unittest",  # safely re-importable from stdlib if ever needed
+        "pytest",
+        "pydoc_data",
+        "pydoc",
+        "doctest",
+        "pdb",
+        "http.server",
+        "tkinter.test",
+    ],
     noarchive=False,
 )
 
@@ -67,8 +77,8 @@ exe = EXE(
     name="PulsePad",
     debug=False,
     bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
+    strip=True,      # drop debug symbols -> noticeably smaller binary
+    upx=False,       # upx not required; strips already shrink enough
     console=False,   # windowed: no console window on Windows
     disable_windowed_traceback=False,
     argv_emulation=False,

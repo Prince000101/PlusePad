@@ -8,11 +8,12 @@ import 'theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // The whole app is landscape-first: a controller never rotates to portrait
-  // (leaving the layout editor / back-nav used to flip the phone sideways).
+  // Start PORTRAIT. The controller screen switches to landscape when it opens
+  // (see ControllerScreen) and back to portrait when it closes — the menu /
+  // editor / connection screens stay portrait.
   await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.landscapeLeft,
-    DeviceOrientation.landscapeRight,
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
   ]);
   final store = LayoutStore();
   await store.load();

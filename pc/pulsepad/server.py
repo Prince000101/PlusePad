@@ -1,23 +1,15 @@
 """PulsePad server: accepts phone connections over UDP (Wi-Fi) and TCP (USB).
 
-Design notes
-------------
-* The daemon listens on BOTH a UDP socket (for low-latency Wi-Fi streaming and
-  auto-discovery broadcast responses) and a TCP socket (for USB mode, which goes
-  through ``adb forward tcp:5005 tcp:5005`` and presents as localhost:5005).
-
-* UDP is connectionless.  Any datagram received is a full controller snapshot
-  (see :mod:`pulsepad.protocol`), so no connection bookkeeping is required for
-  input -- this is what keeps Wi-Fi latency at a minimum and makes the link
-  tolerant of packet loss.
-
-* TCP is used for USB mode and as a reliable control channel.  A TCP client is
-  the "remote" that can receive HAPTIC commands.  If it drops, we simply wait
-  for the next one (auto-reconnect on the phone side).
-
-* Auto-discovery: the phone broadcasts a HELLO datagram to the subnet on the
-  discovery port; the daemon replies with a small beacon so the phone can find
-  the PC without typing an IP address.
+Sockets
+-------
+* UDP  : Wi-Fi gamepad streaming + HELLO/discovery beacon replies.  Every
+         datagram is a full snapshot (see :mod:`pulsepad.protocol`); no
+         connection state is kept, which is what keeps Wi-Fi latency low.
+* TCP  : USB mode (adb forward) and the control channel.  A TCP client is the
+         "remote" that can receive HAPTIC commands; if it drops, the phone
+         reconnects.
+* Discovery: the phone broadcasts a HELLO datagram; the daemon replies with a
+  beacon so the phone can find the PC without an IP address.
 """
 
 import select

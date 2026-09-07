@@ -35,13 +35,12 @@ low nibble = packet type. Multi-byte numbers are little-endian.
 
 ### 2.1 Design rule — snapshots, not deltas
 
-Every GAMEPAD packet is a **complete image** of the controller. If a UDP
-packet is lost, the next one is already the full truth — receiver and sender
-never reconcile "missed deltas". This is the core trick that makes PING/PONG
-latency irrelevant to correctness and drops cheap.
+Every GAMEPAD packet is a full snapshot of the controller.  If a UDP packet
+is lost, the next one is already complete, so no delta reconciliation is
+needed and drops are cheap.
 
-(Exceptions: MOUSE is deliberately a *relative* delta, because mouse state is
-accumulated on the PC side; KEY is a press/release event, not a state image.)
+(Exceptions: MOUSE is a *relative* delta, because mouse state is accumulated
+on the PC side; KEY is a press/release event, not a state image.)
 
 ### 2.2 Packets
 
@@ -85,8 +84,8 @@ test cross-checks the count/order).
 "PPB1" | udp_port u16 BE | tcp_port u16 BE | name_len u8 | name…
 ```
 
-- PC: `server.py:make_beacon()` — broadcasts on UDP `255.255.255.255:54321`
-  every 2 s while running, and replies to a phone's HELLO via unicast.
+- PC: `server.py:make_beacon()` — replies to a phone's HELLO on UDP
+  `255.255.255.255:54321` via unicast.
 - Phone: sends HELLO to the broadcast address, collects beacon replies in a 1.2 s
   window, lists them under "FOUND".
 
@@ -168,10 +167,11 @@ toggle THUMBL/THUMBR.
 - **Enable Gamepad** flow: try the current user with a preflight uinput probe →
   try `pkexec` → fall back to `sudo` (multi-candidate). Writes a udev rule for
   `/dev/uinput` (`scripts/setup_linux_input.sh`); macOS path is stubbed.
-- **Simulate Phone** button runs a real fake client that streams GAMEPAD +
-  PING over UDP exactly like the app — end-to-end test with no device.
+- **USB (cable)** button: runs `adb reverse tcp:<port> tcp:<port>` and checks
+  `adb reverse --list` for confirmation (wired path setup).
 - **Show QR** renders the shared `qr_config.py` payload (host + ports + mode);
   the phone scans it to auto-fill connection fields.
+- **Help** tab documents the Wi-Fi and USB steps inside the app.
 - **Close window = stop server** (threads joined, ports released, device
   detached).
 
@@ -183,8 +183,9 @@ toggle THUMBL/THUMBR.
 
 State machine: `disconnected → connecting → connected (+ error)`.
 - **USB**: `Socket.connect('127.0.0.1', 5005)` (ad-hoc TCP, adb reverse).
-- **Wi-Fi**: send HELLO on the discovery port → receive PING (ack) →
-  `await ack.future.timeout(3 s)`; then UDP sends to the ack source.
+- **Wi-Fi**: bind a UDP socket; send HELLO + PING to the target; wait for the
+  PONG (ack) with `ack.future.timeout(3 s)` before reporting "connected".  If
+  no PC answers, connect fails instead of a phantom "Connected".
 - **QR**: decode payload → fills ip/ports/mode.
 - **Auto-reconnect**: if TCP drops, `_reconnectTimer` (2 s) retries while
   `autoReconnect` is on. UDP has no client-side liveness loop (see §8).
@@ -214,13 +215,14 @@ State machine: `disconnected → connecting → connected (+ error)`.
 
 ### 6.4 Layouts & custom layout
 
-- Built-ins: Gamepad, PSP, PS5, Mouse, Keyboard (in `controller_screen.dart`).
+- Presets: Gamepad (Playstation-style) plus My Custom (in `controller_screen.dart`).
+- The default layout uses shoulder bumper clutter-free zones, with large
+  SELECT/START/L3/R3 pills and press feedback (`AnimatedScale` + accent
+  flash).
 - `LayoutStore` (shared_preferences) persists a user's `CustomLayout`
   (JSON-encoded control slots) locally; `layout_editor_screen.dart` edits it.
-- **Steam-mobile-inspired** phone ergonomics: shoulder bumpers and the tiny
-  SELECT/START/L3/R3 pills are large, and now give tactile press feedback
-  (`_Bumper`, `_PillButton` — `AnimatedScale` + accent flash) so a tap is
-  always visible, not guessed.
+  Each slot is typed (`pad:A`, `key:W`, `mouse:LMB`), so a gamepad `A` never
+  collides with keyboard `A`.
 
 ---
 
@@ -260,27 +262,24 @@ PING/PONG reports the true RTT in the UI so you can see it yourself.
 - **Peer cap**: TCP accepts multiple clients; UDP prunes silent peers after a
   few seconds. Broadcast GAMEPAD is dropped (only PING is answered) — one PC,
   one main pad.
-- **Phone requires Flutter/dart SDK to build/test** — the repo's test machine
-  has no Flutter, so phone changes are verified by byte-mirror unit tests on the
-  PC side plus a manual `flutter analyze && flutter test`.
+- **Phone app needs the Flutter SDK to build/test** — the protocol mirrors in
+  `protocol.dart` and `protocol.py` must stay byte-identical, verified by unit
+  tests on both sides.
 
 ---
 
 ## 9. Testing
 
 ```bash
-# PC — 34 unit tests (real loopback sockets, no root needed)
-cd pc && python3 -m unittest discover -s tests -v
+# PC — 38 unit tests (real loopback sockets, no root needed)
+cd pc && python3 -m unittest discover -s tests
 
-# byte-mirror check: protocol.dart ↔ protocol.py key table + packet sizes
-# PC GUI — headless widget-stub harness (17/17)
-/tmp/opencode/gui_smoke.py
-
-# Phone (run on a machine with Flutter)
+# Phone
 cd phone && flutter analyze && flutter test
 ```
 
 What the PC suite covers: packet encode/decode round-trips, hi/lo button split,
 virtual-device event emission (real uinput on this machine), server dispatch
 (GAMEPAD/MOUSE/KEY/PING/PONG), discovery beacon, peer pruning, haptic decode,
-and the daemon stop/start port-release race.
+the daemon stop/start port-release race, and the simulated-phone end-to-end
+path over both transports.

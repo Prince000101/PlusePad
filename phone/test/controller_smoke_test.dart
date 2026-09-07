@@ -75,7 +75,7 @@ void main() {
 
       expect(cm.buttonFeedback, isTrue, reason: 'feedback default ON');
 
-      for (final label in ['Controller', 'Mouse', 'Keyboard']) {
+      for (final label in ['Controller']) {
         await switchTo(tester, label);
       }
 

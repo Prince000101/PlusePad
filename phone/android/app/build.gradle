@@ -57,6 +57,18 @@ android {
             }
         }
     }
+
+    // One APK per CPU family instead of one fat APK with all ABIs (~3x smaller
+    // per download). Flutter automatically ships only the native libs for the
+    // phone's ABI.
+    splits {
+        abi {
+            enable true
+            reset()
+            include "armeabi-v7a", "arm64-v8a", "x86_64"
+            universalApk false
+        }
+    }
 }
 
 flutter {

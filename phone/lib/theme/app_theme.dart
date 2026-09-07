@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
 
-/// OLED-minimal design system — the only identity PulsePad needs.
+/// Dark OLED theme shared by every screen.
 ///
-/// Pure black canvas, flat grey surfaces held apart by hairlines instead of
-/// shadows, high-contrast type, and a single restrained accent reserved for
-/// *meaningful* states: pressed, active, connected.
+/// Black canvas, flat grey surfaces separated by hairlines, high-contrast
+/// type, and one accent color used for pressed/active/connected states.
 class AppTheme {
   AppTheme._();
 
   // ---- Canvas ----
   static const Color bg = Color(0xFF000000);
 
-  // ---- Surfaces (flat; separated by hairlines, not shadows) ----
+  // ---- Surfaces ----
   static const Color surface = Color(0xFF111113);
   static const Color surfaceAlt = Color(0xFF1A1A20);
   static const Color surfaceBright = Color(0xFF24242C);
@@ -45,7 +44,7 @@ class AppTheme {
 
   // ---- Composite decorations ----
 
-  /// Flat solid card. Elevation is implied by the hairline, never by shadow.
+  /// Flat solid card with a hairline border.
   static BoxDecoration card({
     double radius = AppTheme.radius,
     Color? color,
@@ -58,7 +57,7 @@ class AppTheme {
     );
   }
 
-  /// Accent-highlighted card for active/selected/success states.
+  /// Accent-bordered card for active/selected/success states.
   static BoxDecoration cardActive({
     double radius = AppTheme.radius,
     double alpha = 0.14,
@@ -70,7 +69,7 @@ class AppTheme {
     );
   }
 
-  /// Flat control pad (darker than a card so controls read against surfaces).
+  /// Darker control pad, so controls read against surfaces.
   static BoxDecoration pad({
     double radius = AppTheme.radiusSmall,
     Color? color,
@@ -83,14 +82,14 @@ class AppTheme {
     );
   }
 
-  /// Pressed control.
+  /// Pressed control — brighter fill.
   static BoxDecoration padPressed({
     double radius = AppTheme.radiusSmall,
   }) {
     return BoxDecoration(
-      color: accentAt(0.16),
+      color: accentAt(0.34),
       borderRadius: BorderRadius.circular(radius),
-      border: Border.all(color: accent, width: 1.4),
+      border: Border.all(color: accent, width: 2),
     );
   }
 
@@ -136,8 +135,7 @@ class AppTheme {
   );
 }
 
-/// Pure-black stage for every screen; substantial children draw themselves on
-/// top with their own surfaces, nothing else competes.
+/// Pure-black stage for every screen; children draw their own surfaces.
 class Background extends StatelessWidget {
   const Background({super.key, this.child});
   final Widget? child;

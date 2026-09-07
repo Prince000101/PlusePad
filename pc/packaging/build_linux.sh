@@ -5,12 +5,24 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-echo "[1/3] Installing build dependency (pyinstaller)..."
-python3 -m pip install --upgrade pip
-python3 -m pip install pyinstaller
+echo "[1/3] Checking build dependency (pyinstaller)..."
+PY=python3
+if ! python3 -c "import PyInstaller" >/dev/null 2>&1; then
+    if python3 -m pip install pyinstaller >/dev/null 2>&1; then
+        true
+    else
+        # Debian 12+/Ubuntu 23.10+ block pip outside a venv (PEP 668).
+        # Build in a throwaway venv so there's no risk to the system Python.
+        VENV=/tmp/pulsepad-venv
+        python3 -m venv "$VENV"
+        "$VENV/bin/pip" install --quiet pyinstaller uinput
+        PY="$VENV/bin/python"
+    fi
+fi
+echo "PyInstaller ready ($PY)"
 
 echo "[2/3] Building Linux executable..."
-python3 -m PyInstaller packaging/pulsepad_gui.spec --noconfirm --clean
+"$PY" -m PyInstaller packaging/pulsepad_gui.spec --noconfirm --clean
 
 echo "[3/3] Done."
 echo

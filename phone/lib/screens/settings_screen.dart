@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../app_info.dart';
 import '../theme/app_theme.dart';
 import '../models/packet.dart';
 import '../services/connection_manager.dart';
@@ -81,7 +82,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ]),
               const SizedBox(height: 20),
               _section('ABOUT', [
-                _infoTile('Version', '1.0.0'),
+                _infoTile('Version', kAppVersion),
                 _infoTile('Protocol', 'PulsePad • v1'),
               ]),
             ],

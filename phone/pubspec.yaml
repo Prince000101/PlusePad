@@ -1,7 +1,7 @@
 name: pulsepad
 description: "Turn your phone into a low-latency game controller for PS2/PSP emulators and Linux PC"
 publish_to: 'none'
-version: 2.0.0+2
+version: 2.0.1+3
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

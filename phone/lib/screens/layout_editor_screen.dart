@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../models/control_slot.dart';
 import '../services/layout_store.dart';
+import '../services/protocol.dart' as p;
 import '../theme/app_theme.dart';
 
 /// A full visual editor for the user's custom controller layout.
@@ -72,14 +73,20 @@ class _LayoutEditorScreenState extends State<LayoutEditorScreen> {
                       _chromeIcon(Icons.arrow_back, 'Back',
                           () => Navigator.pop(context, _currentLayout())),
                       const Spacer(),
-                      Text('LAYOUT EDITOR',
-                          style: TextStyle(
-                              fontSize: 12,
-                              letterSpacing: 1.5,
-                              color: Colors.white.withOpacity(0.7),
-                              fontWeight: FontWeight.w700)),
+                      Flexible(
+                        child: Text(widget.layout.name.toUpperCase(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 12,
+                                letterSpacing: 1.5,
+                                color: Colors.white.withOpacity(0.7),
+                                fontWeight: FontWeight.w700)),
+                      ),
                       const Spacer(),
                       _chromeIcon(Icons.restore, 'Reset', _resetToDefault),
+                      const SizedBox(width: 8),
+                      _chromeIcon(Icons.save_as, 'Save As New', _saveAs),
                       const SizedBox(width: 8),
                       _chromeIcon(Icons.check, 'Save', _save),
                     ],
@@ -100,7 +107,17 @@ class _LayoutEditorScreenState extends State<LayoutEditorScreen> {
     );
   }
 
-  CustomLayout _currentLayout() => CustomLayout(name: 'My Custom', slots: _slots);
+  CustomLayout _currentLayout() {
+    // Normalise every button action to its namespaced wire form so drags and
+    // saves keep a consistent store even for layouts that came from v1.
+    for (final s in _slots) {
+      if (s.kind == 'button' && s.action.isNotEmpty) {
+        s.action = SlotAction.parse(s.action).wire;
+      }
+    }
+    return CustomLayout(
+        id: widget.layout.id, name: widget.layout.name, slots: _slots);
+  }
 
   void _resetToDefault() {
     setState(() {
@@ -111,8 +128,50 @@ class _LayoutEditorScreenState extends State<LayoutEditorScreen> {
   }
 
   void _save() {
-    context.read<LayoutStore>().save(_currentLayout());
-    Navigator.pop(context, _currentLayout());
+    final store = context.read<LayoutStore>();
+    final layout = _currentLayout();
+    store.save(layout);
+    Navigator.pop(context, layout);
+  }
+
+  Future<void> _saveAs() async {
+    final controller = TextEditingController(text: '${widget.layout.name} Copy');
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: const Text('Save as new layout',
+            style: TextStyle(color: AppTheme.textPrimary)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: const TextStyle(color: AppTheme.textPrimary),
+          decoration: const InputDecoration(
+            hintText: 'Name',
+            border: OutlineInputBorder(
+                borderSide: BorderSide(color: AppTheme.hairline)),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+              child: const Text('Save')),
+        ],
+      ),
+    );
+    if (name == null || name.isEmpty) return;
+    if (!mounted) return;
+    final copy = CustomLayout(
+      id: CustomLayout.newId(),
+      name: name,
+      slots: _currentLayout().slots.map((s) => ControlSlot.clone(s)).toList(),
+    );
+    final store = context.read<LayoutStore>();
+    store.save(copy);
+    Navigator.pop(context, copy);
   }
 
   // ----------------------------- canvas item --------------------------- //
@@ -251,6 +310,8 @@ class _LayoutEditorScreenState extends State<LayoutEditorScreen> {
         children: [
           _toolButton(Icons.touch_app, 'Button', () => _add('button')),
           const SizedBox(width: 8),
+          _toolButton(Icons.sports_esports, 'Face Pad', () => _add('face')),
+          const SizedBox(width: 8),
           _toolButton(Icons.grid_on, 'D-Pad', () => _add('dpad')),
           const SizedBox(width: 8),
           _toolButton(Icons.gps_fixed, 'Stick', () => _add('stick')),
@@ -341,7 +402,13 @@ class _LayoutEditorScreenState extends State<LayoutEditorScreen> {
       y: 0.5,
       w: kind == 'stick' ? 0.16 : 0.12,
       h: kind == 'stick' ? 0.28 : 0.10,
-      label: kind == 'stick' ? 'STICK' : kind == 'dpad' ? 'D-PAD' : 'BTN',
+      label: kind == 'stick'
+          ? 'STICK'
+          : kind == 'dpad'
+              ? 'D-PAD'
+              : kind == 'face'
+                  ? 'FACE'
+                  : 'BTN',
       action: '',
     );
     setState(() {
@@ -386,14 +453,26 @@ class _LayoutEditorScreenState extends State<LayoutEditorScreen> {
   }
 
   void _chooseAction(ControlSlot s) {
-    final actions = _availableActions();
+    final selected = _selected;
+    if (selected != null && selected.kind != 'button') {
+      // dpad / face / stick use fixed wire behaviour; allow choosing the set.
+      List<String> choices = const ['DPAD'];
+      if (selected.kind == 'stick') choices = const ['LX/LY', 'RX/RY'];
+      if (selected.kind == 'face') choices = const ['Y/B/A/X'];
+      _showSimpleChoice(s, choices);
+      return;
+    }
+    _showActionGroups(s);
+  }
+
+  void _showSimpleChoice(ControlSlot s, List<String> choices) {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: AppTheme.surface,
       builder: (ctx) => SafeArea(
         child: ListView(
           shrinkWrap: true,
-          children: actions
+          children: choices
               .map((a) => ListTile(
                     title: Text(a,
                         style: const TextStyle(color: AppTheme.textPrimary)),
@@ -401,14 +480,7 @@ class _LayoutEditorScreenState extends State<LayoutEditorScreen> {
                         ? const Icon(Icons.check, color: AppTheme.accent)
                         : null,
                     onTap: () {
-                      setState(() {
-                        s.action = a;
-                        if (s.kind == 'button' && a.isNotEmpty) {
-                          // For buttons the label mirrors the action by default
-                          // if the user hasn't customised it yet.
-                          if (s.label == 'BTN' || s.label == '') s.label = a;
-                        }
-                      });
+                      setState(() => s.action = a);
                       Navigator.pop(ctx);
                     },
                   ))
@@ -418,21 +490,72 @@ class _LayoutEditorScreenState extends State<LayoutEditorScreen> {
     );
   }
 
-  List<String> _availableActions() {
-    const buttons = [
-      'A', 'B', 'X', 'Y', 'SELECT', 'START', 'L3', 'R3',
-      'LB', 'RB', 'LT', 'RT',
-      'W', 'A', 'S', 'D', 'SPACE', 'SHIFT', 'CTRL', 'ENTER', 'ESC',
-      'LMB', 'RMB',
+  /// Categorised action picker for custom *buttons*. Stores namespaced wire
+  /// values (`pad:A`, `key:W`, `mouse:LMB`) so gamepad and keyboard names can
+  /// never collide.
+  void _showActionGroups(ControlSlot s) {
+    final groups = _actionGroups();
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppTheme.surface,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final g in groups) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                child: Text(g.section,
+                    style: AppTheme.label.copyWith(color: AppTheme.textMuted)),
+              ),
+              for (final (label, wire) in g.items)
+                ListTile(
+                  dense: true,
+                  title: Text(label,
+                      style: const TextStyle(color: AppTheme.textPrimary)),
+                  trailing: s.action == wire
+                      ? const Icon(Icons.check, color: AppTheme.accent)
+                      : null,
+                  onTap: () {
+                    setState(() {
+                      s.action = wire;
+                      // For buttons the label mirrors the action by default if
+                      // the user hasn't customised it yet.
+                      if (s.label == 'BTN' || s.label == '') s.label = label;
+                    });
+                    Navigator.pop(ctx);
+                  },
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// [section, items(label, wire)] — wire values for buttons; categories for
+  /// the non-button kinds stay plain.
+  static List<({String section, List<(String, String)> items})>
+      _actionGroups() {
+    const pads = [
+      'A', 'B', 'X', 'Y', 'SELECT', 'START',
+      'L1', 'R1', 'L2', 'R2', 'L3', 'R3',
+      'DPAD_UP', 'DPAD_DOWN', 'DPAD_LEFT', 'DPAD_RIGHT',
     ];
-    final selected = _selected;
-    if (selected != null && selected.kind != 'button') {
-      // dpad / stick use fixed wire behaviour; allow choosing the axis set.
-      return selected.kind == 'stick'
-          ? const ['LX/LY', 'RX/RY']
-          : const ['DPAD'];
-    }
-    return buttons.toSet().toList();
+    return [
+      (
+        section: 'GAMEPAD',
+        items: [for (final n in pads) (n, 'pad:$n')],
+      ),
+      (
+        section: 'KEYS',
+        items: [for (final n in p.kKeys) (n, 'key:$n')],
+      ),
+      (
+        section: 'MOUSE',
+        items: [for (final n in const ['LMB', 'RMB', 'MMB']) (n, 'mouse:$n')],
+      ),
+    ];
   }
 
   void _resizeStep(ControlSlot s, double factor) {
@@ -463,6 +586,8 @@ class _LayoutEditorScreenState extends State<LayoutEditorScreen> {
         return AppTheme.accent;
       case 'dpad':
         return AppTheme.green;
+      case 'face':
+        return AppTheme.amber;
       default:
         return AppTheme.amber;
     }
@@ -470,14 +595,16 @@ class _LayoutEditorScreenState extends State<LayoutEditorScreen> {
 
   List<ControlSlot> _defaultSlots() {
     return [
-      _mk('a', 'button', 0.78, 0.32, 0.10, 0.12, 'A', 'A'),
-      _mk('b', 'button', 0.86, 0.48, 0.10, 0.12, 'B', 'B'),
-      _mk('x', 'button', 0.86, 0.16, 0.10, 0.12, 'X', 'X'),
-      _mk('y', 'button', 0.78, 0.64, 0.10, 0.12, 'Y', 'Y'),
-      _mk('dpad', 'dpad', 0.16, 0.5, 0.20, 0.42, 'D-PAD', 'DPAD'),
-      _mk('stick', 'stick', 0.84, 0.78, 0.16, 0.30, 'STICK', 'RX/RY'),
-      _mk('sel', 'button', 0.46, 0.42, 0.09, 0.09, 'SELECT', 'SELECT'),
-      _mk('sta', 'button', 0.54, 0.60, 0.09, 0.09, 'START', 'START'),
+      _mk('l2', 'button', 0.09, 0.05, 0.12, 0.10, 'L2', 'L2'),
+      _mk('l1', 'button', 0.09, 0.16, 0.12, 0.10, 'L1', 'L1'),
+      _mk('r2', 'button', 0.91, 0.05, 0.12, 0.10, 'R2', 'R2'),
+      _mk('r1', 'button', 0.91, 0.16, 0.12, 0.10, 'R1', 'R1'),
+      _mk('d', 'dpad', 0.17, 0.38, 0.28, 0.40, 'D-PAD', 'DPAD'),
+      _mk('lst', 'stick', 0.17, 0.75, 0.24, 0.22, 'L-STICK', 'LX/LY'),
+      _mk('f', 'face', 0.83, 0.38, 0.28, 0.40, 'FACE', 'Y/B/A/X'),
+      _mk('rst', 'stick', 0.83, 0.75, 0.24, 0.22, 'R-STICK', 'RX/RY'),
+      _mk('sel', 'button', 0.46, 0.30, 0.10, 0.10, 'SELECT', 'SELECT'),
+      _mk('sta', 'button', 0.54, 0.30, 0.10, 0.10, 'START', 'START'),
     ];
   }
 

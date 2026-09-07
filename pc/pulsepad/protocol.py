@@ -1,13 +1,8 @@
 """PulsePad binary wire protocol.
 
-Designed for ultra-low latency and correctness over lossy transport:
-
-* Every GAMEPAD packet is a *self-contained snapshot* of the full controller
-  state.  Because UDP may drop packets, sender and receiver never have to
-  reconcile "missed deltas" -- the latest snapshot always reflects the full
-  state, so a dropped packet is simply superseded by the next one.
-
-* Packets are fixed, tiny, and endian-independent (byte-oriented).
+Every GAMEPAD packet is a full-state snapshot: if UDP drops one, the next is
+already complete, so no delta reconciliation is needed.  Packets are fixed
+size and byte-oriented.
 
 Layout
 ------

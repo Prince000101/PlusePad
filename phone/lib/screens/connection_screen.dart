@@ -18,6 +18,7 @@ class ConnectionScreen extends StatefulWidget {
 class _ConnectionScreenState extends State<ConnectionScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
+  final _ipController = TextEditingController();
 
   @override
   void initState() {
@@ -27,14 +28,19 @@ class _ConnectionScreenState extends State<ConnectionScreen>
       vsync: this,
     )..repeat(reverse: true);
 
-    // Wi-Fi is the default zero-config path; no IP typing needed at all.
+    // Wi-Fi is the default measure path; you can still type a PC IP below.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) context.read<ConnectionManager>().setMode(ConnectionMode.wifi);
+      if (mounted) {
+        final m = context.read<ConnectionManager>();
+        m.setMode(ConnectionMode.wifi);
+        _ipController.text = m.ipAddress;
+      }
     });
   }
 
   @override
   void dispose() {
+    _ipController.dispose();
     _pulseController.dispose();
     super.dispose();
   }
@@ -147,16 +153,61 @@ class _ConnectionScreenState extends State<ConnectionScreen>
               ),
             ],
           ),
-          if (manager.mode == ConnectionMode.wifi &&
-              manager.ipAddress.isEmpty) ...[
-            const SizedBox(height: 10),
-            Text(
-              'Point at the QR on the PC screen — no IP typing, Wi-Fi auto-fills.',
-              style: AppTheme.caption.copyWith(color: AppTheme.textMuted),
-            ),
+          if (manager.mode == ConnectionMode.wifi) ...[
+            const SizedBox(height: 12),
+            _buildIpInput(manager),
           ],
         ],
       ),
+    );
+  }
+
+  Widget _buildIpInput(ConnectionManager manager) {
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _ipController,
+            decoration: InputDecoration(
+              hintText: 'PC IP  e.g. 192.168.1.100',
+              hintStyle: const TextStyle(color: AppTheme.textMuted),
+              filled: true,
+              fillColor: AppTheme.surface,
+              contentPadding: const EdgeInsets.symmetric(
+                  vertical: 14, horizontal: 14),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: AppTheme.hairline),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: AppTheme.hairline),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide:
+                    const BorderSide(color: AppTheme.accent, width: 1.4),
+              ),
+              prefixIcon:
+                  const Icon(Icons.router, color: AppTheme.textSecondary),
+            ),
+            keyboardType: TextInputType.number,
+            style: const TextStyle(color: AppTheme.textPrimary),
+            onChanged: (value) =>
+                context.read<ConnectionManager>().setIpAddress(value),
+          ),
+        ),
+        const SizedBox(width: 10),
+        GamepadButton(
+          label: '',
+          icon: Icons.refresh,
+          width: 52,
+          height: 52,
+          round: true,
+          highlight: true,
+          onTap: () => context.read<ConnectionManager>().discover(),
+        ),
+      ],
     );
   }
 
@@ -330,21 +381,27 @@ class _ConnectionScreenState extends State<ConnectionScreen>
       children: [
         IconButton(
           icon: const Icon(Icons.settings, color: AppTheme.textMuted),
+          tooltip: 'Settings',
           onPressed: () => Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const SettingsScreen()),
           ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.gamepad, color: AppTheme.accent),
+          tooltip: "Open controller (skip connect)",
+          onPressed: () {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const ControllerScreen()),
+            );
+          },
         ),
       ],
     );
   }
 
   void _handleConnect(BuildContext context, ConnectionManager manager) async {
-    // No IP yet in Wi-Fi mode? Skip straight to the QR scanner.
-    if (manager.mode == ConnectionMode.wifi && manager.ipAddress.isEmpty) {
-      final ok = await _openQrScanner(context);
-      if (!ok || !context.mounted) return;
-    }
     await _doConnect(context, manager);
   }
 

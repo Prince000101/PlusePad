@@ -1,20 +1,12 @@
 import 'dart:ui';
 
-/// The controller screen is one big Stack divided into guaranteed-disjoint
-/// zones. Every preset places controls *inside* its own zone, so nothing can
-/// overlap — the engine is the single source of truth for "what is where".
+/// Divides the controller screen into non-overlapping zones.
 ///
-///   ┌──────────────────────────────────────────────┐
-///   │ shoulder strip (L1 L2 ····· R2 R1)   top 44 │
-///   ├──────────────────────────────────────────────┤
-///   │ chrome band (menu · latency)      padded 8   │
-///   ├───────────────┬────────┬───────────────────┤
-///   │   left grip   │ center │   right grip      │
-///   └───────────────┴────────┴───────────────────┘
-///
-/// Safe insets (cutout / nav bar / notch) are folded in so controls never sit
-/// under hardware chrome, and the zones are inset from each other so real
-/// controls never touch.
+/// The screen is split into a shoulder strip, a chrome band (menu + latency),
+/// and a control field split into left grip / center / right grip.  Presets
+/// place their controls inside their own zone, so nothing overlaps.  Safe
+/// insets (cutout / nav bar) are folded in so controls stay clear of
+/// hardware chrome.
 class LayoutPanel {
   LayoutPanel({
     required this.size,
@@ -22,6 +14,7 @@ class LayoutPanel {
     this.safeBottom = 0,
     this.safeLeft = 0,
     this.safeRight = 0,
+    this.stripHeight = 44,
   }) {
     final w = size.width;
     final h = size.height;
@@ -29,8 +22,10 @@ class LayoutPanel {
     final bottomEdge = h - safeBottom;
 
     // Shoulder strip hugs the top edge, full width, clear of side cutouts.
+    // The gamepad layout asks for a taller strip to stack L2/L1 and R2/R1
+    // vertically; the compact layouts keep the single 44px row.
     shoulder =
-        Rect.fromLTRB(safeLeft, safeTop, rightEdge - safeLeft, safeTop + _strip);
+        Rect.fromLTRB(safeLeft, safeTop, rightEdge - safeLeft, safeTop + stripHeight);
 
     // Chrome band (menu + latency cluster) sits directly under the strip.
     fieldTop = shoulder.bottom + _gap + _chrome;
@@ -59,8 +54,8 @@ class LayoutPanel {
   final double safeBottom;
   final double safeLeft;
   final double safeRight;
+  final double stripHeight;
 
-  static const double _strip = 44;
   static const double _gap = 8;
   static const double _chrome = 56;
 

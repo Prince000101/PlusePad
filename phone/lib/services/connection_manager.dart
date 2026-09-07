@@ -9,29 +9,34 @@ import '../models/controller_state.dart';
 import '../models/packet.dart';
 import 'protocol.dart' as p;
 
-/// Phone <-> PC transport for PulsePad, covering USB (TCP via adb reverse)
-/// and Wi-Fi (UDP streaming) modes with zero-touch auto-discovery.
+/// Phone <-> PC transport: USB (TCP via adb reverse) and Wi-Fi (UDP).
 ///
-/// Latency-first design:
-///  * Binary, self-contained state packets (never JSON) keep bytes and CPU low
-///    and make the link loss-tolerant.  Every gamepad packet is a full snapshot
-///    so a dropped packet is simply superseded by the next one.
-///  * UI state changes are coalesced and flushed at a steady high rate, so a
-///    burst of touch events collapses into one packet per tick without adding
-///    latency.
-///  * Latency is measured with real PING/PONG round trips.
-///  * Wi-Fi mode auto-discovers the PC via UDP broadcast; USB mode tunnels over
-///    adb reverse so no IP is ever needed.
-///  * Timeouts + automatic reconnection keep long sessions alive.
+/// Gamepad packets are full-state snapshots, so a dropped UDP packet is
+/// superseded by the next one.  Input is coalesced and flushed at a fixed
+/// rate; latency is measured with PING/PONG.  Wi-Fi mode finds the PC by UDP
+/// broadcast; USB mode tunnels over adb reverse (no IP needed).  Timeouts and
+/// auto-reconnect keep long sessions alive.
 class ConnectionManager extends ChangeNotifier {
   ConnectionMode _mode = ConnectionMode.wifi;
   ConnectionStatus _state = ConnectionStatus.disconnected;
-  ControllerLayout _layout = ControllerLayout.gamepad;
   String _typedIp = '';
+
+  /// Test hook: sets connection status without a real socket handshake.
+  /// Widget tests run under FakeAsync and cannot open sockets.
+  @visibleForTesting
+  void forceState(ConnectionStatus s) {
+    _state = s;
+    notifyListeners();
+  }
 
   // Ports supplied by a scanned QR code (default -1 = use standard 5005/5006).
   int _qrUdpPort = -1;
   int _qrTcpPort = -1;
+
+  // USB port from a 'tcp'-mode QR (adb reverse tunnels THIS local port). Kept
+  // separate from the Wi-Fi beacon ports so a Wi-Fi QR scan can never leak a
+  // stale TCP port into a wired connection.
+  int? _usbPort;
 
   // Transports
   Socket? _tcp;
@@ -72,18 +77,12 @@ class ConnectionManager extends ChangeNotifier {
 
   ConnectionMode get mode => _mode;
   ConnectionStatus get state => _state;
-  ControllerLayout get layout => _layout;
   String get ipAddress => _typedIp;
   int get latency => _latency;
   List<DiscoveredServer> get discovered => List.unmodifiable(_discovered);
 
   void setMode(ConnectionMode mode) {
     _mode = mode;
-    notifyListeners();
-  }
-
-  void setLayout(ControllerLayout layout) {
-    _layout = layout;
     notifyListeners();
   }
 
@@ -101,6 +100,8 @@ class ConnectionManager extends ChangeNotifier {
     _mode = p.mode == 'tcp' ? ConnectionMode.usb : ConnectionMode.wifi;
     _qrTcpPort = p.tcpPort;
     _qrUdpPort = p.udpPort;
+    // Only a USB-mode QR overrides the wired port; a Wi-Fi QR must not.
+    _usbPort = (p.mode == 'tcp' && p.tcpPort > 0) ? p.tcpPort : null;
     notifyListeners();
     return true;
   }
@@ -109,7 +110,7 @@ class ConnectionManager extends ChangeNotifier {
   int get qrTcpPort => _qrTcpPort;
 
   // ------------------------------------------------------------------ //
-  // Discovery (hassle-free Wi-Fi setup)
+  // Discovery (Wi-Fi auto-find)
   // ------------------------------------------------------------------ //
   /// Broadcast HELLO to the discovery port and collect beacons for a short
   /// window.  Populates [discovered].
@@ -191,13 +192,12 @@ class ConnectionManager extends ChangeNotifier {
   }
 
   Future<void> _connectUsb() async {
-    // adb reverse tcp:5005 tcp:5005   (run once on the PC)
-    // forwards the PHONE's localhost:5005 to the PC daemon's localhost:5005,
-    // so the app simply connects to its own loopback -- no IP required and the
-    // lowest possible latency path.
+    // adb reverse tcp:5005 tcp:5005   (run once on the PC) forwards the
+    // phone's localhost:5005 to the PC daemon, so the app connects to its own
+    // loopback -- no PC IP needed.
     const host = '127.0.0.1';
-    const port = 5005;
-    final sock = await Socket.connect(host, _qrTcpPort > 0 ? _qrTcpPort : port,
+    final port = _usbPort ?? 5005;
+    final sock = await Socket.connect(host, port,
         timeout: const Duration(seconds: 5));
     sock.setOption(SocketOption.tcpNoDelay, true);
     _tcp = sock;
@@ -206,7 +206,7 @@ class ConnectionManager extends ChangeNotifier {
 
   Future<void> _connectWifi() async {
     if (_typedIp.isEmpty && _discovered.isEmpty) {
-      // Try discovery first so the app is fully zero-config.
+      // Try discovery first, so no IP has to be typed.
       await discover(window: const Duration(milliseconds: 1200));
     }
     if (_typedIp.isEmpty && _discovered.isEmpty) {

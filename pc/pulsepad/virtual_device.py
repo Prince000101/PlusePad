@@ -1,21 +1,14 @@
-"""Cross-platform virtual gamepad backend.
+"""Cross-platform virtual gamepad.
 
-PulsePad creates a virtual gamepad that is recognised by Steam, PS2 (PCSX2),
-PSP (PPSSPP) and native games on every desktop OS:
+Backends
+--------
+* Linux  : ``uinput`` via ``python-uinput``.
+* Windows: ViGEmBus via ``vigem-client`` (Xbox 360 pad).
+* macOS  : unresolved; backend degrades gracefully.
 
-  * Linux/macOS : Linux ``uinput`` via ``python-uinput`` (macOS userspace tools
-                  can also use a libusb-based driver, but uinput is the primary
-                  path on Linux).
-  * Windows      : ViGEmBus via ``vigem-client`` (creates an Xbox 360 pad that
-                  any emulator/Windows game accepts).
-
-Backends are selected automatically from the host OS.  If the required system
-driver/permissions are missing the device degrades to a null no-op so the
-daemon's protocol/server still function -- standalone input is then disabled
-with a clear warning.
-
-Mixing the two backends behind one interface keeps the rest of the stack
-(protocol + server) platform-independent.
+The backend is picked from the host OS.  If the driver is missing or
+permissions are denied, it degrades to a null no-op so the server still runs;
+the GUI flags it with a warning.
 """
 
 import math
